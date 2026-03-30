@@ -150,6 +150,115 @@ def handle_task_list(bot, call: CallbackQuery, status: str):
         text += f"\n- {t['title']}: {t.get('description', '')}"
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
 
+# --- User Dashboard: Profile & Tasks ---
+def handle_user_profile(bot, call: CallbackQuery):
+    user = db.get_user(call.from_user.id)
+    if not user:
+        bot.answer_callback_query(call.id, "Not registered.")
+        return
+    text = f"Profile:\nName: {user.get('first_name','')} {user.get('last_name','')}\nEmail: {user.get('email','')}\nRole: {config.ROLE_DISPLAY.get(user.get('role',''), user.get('role','').title())}\nScore: {user.get('score',0)}"
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
+
+# --- User: Ongoing/Completed Tasks List ---
+def handle_user_task_list(bot, call: CallbackQuery, status: str):
+    user = db.get_user(call.from_user.id)
+    if not user:
+        bot.answer_callback_query(call.id, "Not registered.")
+        return
+    tasks = db.get_tasks_for_user(call.from_user.id, status)
+    tasks += db.get_tasks_for_role(user["role"], status)
+    if not tasks:
+        bot.edit_message_text(f"No {status.lower()} tasks.", call.message.chat.id, call.message.message_id)
+        return
+    markup = InlineKeyboardMarkup()
+    for t in tasks:
+        markup.add(InlineKeyboardButton(t['title'], callback_data=f"user_task_{t['_id']}"))
+    bot.edit_message_text(f"{status.title()} Tasks:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+# --- User: Task Detail & Submission ---
+def handle_user_task_detail(bot, call: CallbackQuery):
+    from bson import ObjectId
+    task_id = call.data.replace("user_task_", "")
+    task = db.tasks.find_one({"_id": ObjectId(task_id)})
+    if not task:
+        bot.answer_callback_query(call.id, "Task not found.")
+        return
+    text = f"Task: {task['title']}\nDescription: {task.get('description','')}\nDeadline: {task.get('deadline','')}\nStatus: {task.get('status','')}"
+    markup = InlineKeyboardMarkup()
+    if task.get('status') == config.TASK_STATUS_ONGOING:
+        markup.add(InlineKeyboardButton("Submit Task", callback_data=f"user_submit_{task_id}"))
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+# --- User: Submit Task (link) ---
+def handle_user_submit_task(bot, call: CallbackQuery):
+    state = registration_state.setdefault(call.from_user.id, {})
+    state['step'] = 'user_submit_link'
+    state['submit_task_id'] = call.data.replace('user_submit_', '')
+    bot.send_message(call.message.chat.id, "Send the link to your submission (GitHub, Google Drive, etc.). Make sure privacy settings allow admin access.")
+
+# --- User: Receive Submission Link ---
+def handle_user_submit_link(bot, message: Message):
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get('step') != 'user_submit_link':
+        return
+    link = message.text.strip()
+    if not link:
+        bot.send_message(message.chat.id, "Please send a valid link:")
+        return
+    state['submit_link'] = link
+    state['step'] = 'user_submit_files'
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Skip file upload", callback_data="user_submit_skipfiles"))
+    bot.send_message(message.chat.id, "Now upload screenshots, screen recordings, or other files (one at a time). Click 'Skip file upload' if you have no files.", reply_markup=markup)
+
+# --- User: Receive Submission Files ---
+def handle_user_submit_file(bot, message: Message):
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get('step') != 'user_submit_files':
+        return
+    files = state.setdefault('submit_files', [])
+    if message.document:
+        files.append({'file_id': message.document.file_id, 'file_name': message.document.file_name})
+    elif message.photo:
+        files.append({'file_id': message.photo[-1].file_id, 'file_name': 'photo.jpg'})
+    else:
+        bot.send_message(message.chat.id, "Please upload a file or photo, or click 'Skip file upload'.")
+        return
+    state['submit_files'] = files
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Done uploading", callback_data="user_submit_donefiles"))
+    markup.add(InlineKeyboardButton("Upload another file", callback_data="user_submit_morefiles"))
+    bot.send_message(message.chat.id, "File received. Upload another or click 'Done uploading'.", reply_markup=markup)
+
+# --- User: Skip/Done File Upload ---
+def handle_user_submit_skipfiles(bot, call: CallbackQuery):
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get('step') != 'user_submit_files':
+        return
+    save_user_submission(bot, call, state)
+
+def handle_user_submit_donefiles(bot, call: CallbackQuery):
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get('step') != 'user_submit_files':
+        return
+    save_user_submission(bot, call, state)
+
+def save_user_submission(bot, call, state):
+    from datetime import datetime
+    from bson import ObjectId
+    submission = {
+        'user_id': call.from_user.id,
+        'task_id': state['submit_task_id'],
+        'link': state.get('submit_link'),
+        'files': state.get('submit_files', []),
+        'submitted_at': datetime.utcnow(),
+        'status': config.TASK_STATUS_SUBMITTED
+    }
+    db.add_submission(submission)
+    db.update_task(ObjectId(state['submit_task_id']), {'status': config.TASK_STATUS_SUBMITTED})
+    bot.edit_message_text("Submission received! Admins will review your work.", call.message.chat.id, call.message.message_id)
+    registration_state.pop(call.from_user.id, None)
+
 # --- Admin Handlers ---
 def is_admin(telegram_id: int) -> bool:
     user = db.get_user(telegram_id)
@@ -296,7 +405,7 @@ def handle_admin_assign_task(bot, message: Message):
     bot.send_message(message.chat.id, "Enter task title:")
 
 def handle_admin_task_title(bot, message: Message):
-    state = registration_state.get(message.from.user.id)
+    state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_task_title":
         return
     state["title"] = message.text.strip()
@@ -304,7 +413,7 @@ def handle_admin_task_title(bot, message: Message):
     bot.send_message(message.chat.id, "Enter task description:")
 
 def handle_admin_task_desc(bot, message: Message):
-    state = registration_state.get(message.from.user.id)
+    state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_task_desc":
         return
     state["description"] = message.text.strip()
@@ -386,7 +495,7 @@ def handle_admin_task_user_done(bot, call: CallbackQuery):
     bot.edit_message_text("Enter deadline for this task (YYYY-MM-DD):", call.message.chat.id, call.message.message_id)
 
 def handle_admin_task_deadline(bot, message: Message):
-    state = registration_state.get(message.from.user.id)
+    state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_task_deadline":
         return
     deadline = message.text.strip()
@@ -409,7 +518,7 @@ def handle_admin_task_deadline(bot, message: Message):
     }
     if db.add_task(task):
         bot.send_message(message.chat.id, "Task assigned!")
-        log_event("task_assigned", {"admin": message.from.user.id, **task})
+        log_event("task_assigned", {"admin": message.from_user.id, **task})
         # Notify users
         notify_users = state.get("assigned_to", [])
         if state.get("assigned_role"):
@@ -421,4 +530,87 @@ def handle_admin_task_deadline(bot, message: Message):
                 pass
     else:
         bot.send_message(message.chat.id, "Failed to assign task.")
-    registration_state.pop(message.from.user.id, None)
+    registration_state.pop(message.from_user.id, None)
+
+# --- Admin: Review & Score Submissions ---
+def handle_admin_review_menu(bot, message: Message):
+    if not is_admin(message.from_user.id):
+        bot.send_message(message.chat.id, "Admin only.")
+        return
+    # List all submitted tasks
+    from bson import ObjectId
+    submitted = list(db.submissions.find({'status': config.TASK_STATUS_SUBMITTED}))
+    if not submitted:
+        bot.send_message(message.chat.id, "No submitted tasks to review.")
+        return
+    markup = InlineKeyboardMarkup()
+    for s in submitted:
+        user = db.get_user(s['user_id'])
+        task = db.tasks.find_one({'_id': ObjectId(s['task_id'])})
+        if not user or not task: continue
+        markup.add(InlineKeyboardButton(f"{user.get('first_name','')} {user.get('last_name','')} - {task['title']}", callback_data=f"admin_review_{s['_id']}"))
+    bot.send_message(message.chat.id, "Select a submission to review:", reply_markup=markup)
+
+def handle_admin_review_detail(bot, call: CallbackQuery):
+    from bson import ObjectId
+    sub_id = call.data.replace('admin_review_', '')
+    submission = db.submissions.find_one({'_id': ObjectId(sub_id)})
+    if not submission:
+        bot.answer_callback_query(call.id, "Submission not found.")
+        return
+    user = db.get_user(submission['user_id'])
+    task = db.tasks.find_one({'_id': ObjectId(submission['task_id'])})
+    text = f"Submission for {task['title']}\nBy: {user.get('first_name','')} {user.get('last_name','')}\nLink: {submission.get('link','')}\nFiles: {len(submission.get('files',[]))}\nStatus: {submission.get('status','')}"
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Mark On Review", callback_data=f"admin_review_on_{sub_id}"))
+    markup.add(InlineKeyboardButton("Mark Done & Score", callback_data=f"admin_review_done_{sub_id}"))
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+def handle_admin_review_on(bot, call: CallbackQuery):
+    from bson import ObjectId
+    sub_id = call.data.replace('admin_review_on_', '')
+    db.submissions.update_one({'_id': ObjectId(sub_id)}, {'$set': {'status': config.TASK_STATUS_ON_REVIEW}})
+    bot.edit_message_text("Submission marked as 'On Review'.", call.message.chat.id, call.message.message_id)
+
+def handle_admin_review_done(bot, call: CallbackQuery):
+    state = registration_state.setdefault(call.from_user.id, {})
+    state['step'] = 'admin_score_input'
+    state['score_sub_id'] = call.data.replace('admin_review_done_', '')
+    bot.send_message(call.message.chat.id, f"Enter score for this submission (0-{config.MAX_SCORE}):")
+
+def handle_admin_score_input(bot, message: Message):
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get('step') != 'admin_score_input':
+        return
+    try:
+        score = int(message.text.strip())
+        if not (0 <= score <= config.MAX_SCORE):
+            raise ValueError
+    except Exception:
+        bot.send_message(message.chat.id, f"Enter a valid score (0-{config.MAX_SCORE}):")
+        return
+    state['score'] = score
+    state['step'] = 'admin_score_note'
+    bot.send_message(message.chat.id, "Enter a note for this submission (optional):")
+
+def handle_admin_score_note(bot, message: Message):
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get('step') != 'admin_score_note':
+        return
+    note = message.text.strip()
+    from bson import ObjectId
+    sub_id = state['score_sub_id']
+    submission = db.submissions.find_one({'_id': ObjectId(sub_id)})
+    if not submission:
+        bot.send_message(message.chat.id, "Submission not found.")
+        registration_state.pop(message.from_user.id, None)
+        return
+    db.submissions.update_one({'_id': ObjectId(sub_id)}, {'$set': {'status': config.TASK_STATUS_DONE, 'score': state['score'], 'note': note}})
+    db.increment_user_score(submission['user_id'], state['score'])
+    bot.send_message(message.chat.id, f"Submission marked as done. Score: {state['score']}")
+    # Notify user
+    try:
+        bot.send_message(submission['user_id'], f"Your submission for '{submission.get('task_id')}' was reviewed. Score: {state['score']}\nNote: {note}")
+    except Exception:
+        pass
+    registration_state.pop(message.from_user.id, None)

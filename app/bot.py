@@ -17,8 +17,77 @@ from app.handlers import (
     handle_admin_assign_task, handle_admin_task_title, handle_admin_task_desc,
     handle_admin_assign_type, handle_admin_task_role, handle_admin_task_deadline,
     handle_admin_task_user_page, handle_admin_task_user_select, handle_admin_task_user_done,
+    handle_user_profile, handle_user_task_list, handle_user_task_detail,
+    handle_user_submit_task, handle_user_submit_link, handle_user_submit_file,
+    handle_user_submit_skipfiles, handle_user_submit_donefiles,
+    handle_admin_review_menu, handle_admin_review_detail, handle_admin_review_on, handle_admin_review_done,
+    handle_admin_score_input, handle_admin_score_note,
     registration_state
 )
+# --- Admin review menu ---
+@bot.message_handler(commands=['review'])
+def admin_review_menu_cmd(message: Message):
+    handle_admin_review_menu(bot, message)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_') and not (call.data.startswith('admin_review_on_') or call.data.startswith('admin_review_done_')))
+def admin_review_detail_callback(call: CallbackQuery):
+    handle_admin_review_detail(bot, call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_on_'))
+def admin_review_on_callback(call: CallbackQuery):
+    handle_admin_review_on(bot, call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_done_'))
+def admin_review_done_callback(call: CallbackQuery):
+    handle_admin_review_done(bot, call)
+
+@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_score_input')
+def admin_score_input_step(message: Message):
+    handle_admin_score_input(bot, message)
+
+@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_score_note')
+def admin_score_note_step(message: Message):
+    handle_admin_score_note(bot, message)
+# --- User dashboard/profile ---
+@bot.callback_query_handler(func=lambda call: call.data == 'profile')
+def user_profile_callback(call: CallbackQuery):
+    handle_user_profile(bot, call)
+
+# --- User tasks (ongoing/completed) ---
+@bot.callback_query_handler(func=lambda call: call.data == 'tasks_ongoing')
+def user_ongoing_tasks_callback(call: CallbackQuery):
+    handle_user_task_list(bot, call, status='ONGOING')
+
+@bot.callback_query_handler(func=lambda call: call.data == 'tasks_completed')
+def user_completed_tasks_callback(call: CallbackQuery):
+    handle_user_task_list(bot, call, status='COMPLETED')
+
+# --- User task detail and submission ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith('user_task_'))
+def user_task_detail_callback(call: CallbackQuery):
+    handle_user_task_detail(bot, call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('user_submit_'))
+def user_submit_task_callback(call: CallbackQuery):
+    handle_user_submit_task(bot, call)
+
+@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'user_submit_link')
+def user_submit_link_step(message: Message):
+    handle_user_submit_link(bot, message)
+
+@bot.message_handler(content_types=['document', 'photo'])
+def user_submit_file_step(message: Message):
+    state = registration_state.get(message.from_user.id)
+    if state and state.get('step') == 'user_submit_files':
+        handle_user_submit_file(bot, message)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'user_submit_skipfiles')
+def user_submit_skipfiles_callback(call: CallbackQuery):
+    handle_user_submit_skipfiles(bot, call)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'user_submit_donefiles')
+def user_submit_donefiles_callback(call: CallbackQuery):
+    handle_user_submit_donefiles(bot, call)
 # --- Admin assign task ---
 @bot.message_handler(commands=['assigntask'])
 def admin_assign_task_cmd(message: Message):
