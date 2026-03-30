@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.13.4",
+    "pymongo>=4.16.0",
     "pytelegrambotapi>=4.32.0",
     "python-dotenv>=1.2.2",
 ]
