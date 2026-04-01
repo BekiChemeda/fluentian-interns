@@ -183,7 +183,7 @@ def handle_register_start(bot, source) -> None:
             bot.answer_callback_query(source.id)
         return
     registration_state[user_id] = {"step": "reg_first_name"}
-    bot.send_message(chat_id, "Enter first name:", reply_markup=navigation_markup(home=True, cancel=True))
+    bot.send_message(chat_id, "Enter first name (example: John):", reply_markup=navigation_markup(home=True, cancel=True))
     if isinstance(source, CallbackQuery):
         bot.answer_callback_query(source.id)
 
@@ -198,7 +198,7 @@ def handle_register_first_name(bot, message: Message) -> None:
         return
     state["first_name"] = first_name
     state["step"] = "reg_last_name"
-    bot.send_message(message.chat.id, "Enter last name:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Enter last name (example: Michael):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_register_last_name(bot, message: Message) -> None:
@@ -211,7 +211,7 @@ def handle_register_last_name(bot, message: Message) -> None:
         return
     state["last_name"] = last_name
     state["step"] = "reg_email"
-    bot.send_message(message.chat.id, "Enter email:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Enter email (example: john.michael@example.com):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_register_email(bot, message: Message) -> None:
@@ -228,7 +228,7 @@ def handle_register_email(bot, message: Message) -> None:
     for role in get_active_roles(include_admin=False):
         markup.add(InlineKeyboardButton(role_label(role), callback_data=f"reg_role|{role}"))
     markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Select role:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Select role from the buttons below:", reply_markup=markup)
 
 
 def handle_register_role(bot, call: CallbackQuery) -> None:
@@ -287,6 +287,14 @@ def handle_registration_approval(bot, call: CallbackQuery, approve: bool) -> Non
         return
     reg_id = parts[1]
     reg = db.get_pending_registration(reg_id)
+    if reg and reg.get("status") != "PENDING":
+        latest = db.pending_registrations.find_one(
+            {"telegram_id": reg.get("telegram_id"), "status": "PENDING"},
+            sort=[("created_at", -1)],
+        )
+        if latest:
+            reg = latest
+            reg_id = str(latest.get("_id"))
     if not reg or reg.get("status") != "PENDING":
         bot.answer_callback_query(call.id, "Request already handled")
         return
@@ -558,7 +566,7 @@ def handle_submit_task(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Task not found")
         return
     registration_state[call.from_user.id] = {"step": "submit_work_url", "task_id": task_id, "submission": {"files": [], "custom_fields": []}}
-    bot.send_message(call.message.chat.id, "Send GitHub or Figma URL:", reply_markup=navigation_markup(back=f"task|{task_id}"))
+    bot.send_message(call.message.chat.id, "Send GitHub or Figma URL (example: https://github.com/user/repo):", reply_markup=navigation_markup(back=f"task|{task_id}"))
     bot.answer_callback_query(call.id)
 
 
@@ -660,11 +668,11 @@ def handle_submit_deployed_choice(bot, call: CallbackQuery) -> None:
     state["submission"]["is_deployed"] = has_demo
     if has_demo:
         state["step"] = "submit_demo_url"
-        bot.send_message(call.message.chat.id, "Send live demo URL:", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(call.message.chat.id, "Send live demo URL (example: https://myapp.vercel.app):", reply_markup=navigation_markup(cancel=True))
     else:
         state["submission"]["demo_url"] = None
         state["step"] = "submit_learned"
-        bot.send_message(call.message.chat.id, "What did you learn from this task?", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(call.message.chat.id, "What did you learn from this task? (example: I learned API pagination and better state handling.)", reply_markup=navigation_markup(cancel=True))
     bot.answer_callback_query(call.id)
 
 
@@ -678,7 +686,7 @@ def handle_submit_demo_url(bot, message: Message) -> None:
         return
     state["submission"]["demo_url"] = url
     state["step"] = "submit_learned"
-    bot.send_message(message.chat.id, "What did you learn from this task?", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "What did you learn from this task? (example: I learned API pagination and better state handling.)", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_submit_learned(bot, message: Message) -> None:
@@ -691,7 +699,7 @@ def handle_submit_learned(bot, message: Message) -> None:
         return
     state["submission"]["learned"] = learned
     state["step"] = "submit_importance"
-    bot.send_message(message.chat.id, "Rate task importance from 1 to 10:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Rate task importance from 1 to 10 (example: 8):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_submit_importance(bot, message: Message) -> None:
@@ -720,11 +728,51 @@ def handle_submit_custom_choice(bot, call: CallbackQuery) -> None:
         return
     if call.data == "submit_custom_yes":
         state["step"] = "submit_custom_name"
-        bot.send_message(call.message.chat.id, "Enter custom field name:", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(call.message.chat.id, "Enter custom field name (example: Figma Prototype):", reply_markup=navigation_markup(cancel=True))
     else:
-        state["step"] = "submit_files"
-        _prompt_submission_files(bot, call.message.chat.id)
+        state["step"] = "submit_assets_choice"
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ Yes, I have files", callback_data="submit_assets_yes"))
+        markup.add(InlineKeyboardButton("⏭️ No extra files", callback_data="submit_assets_no"))
+        markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+        bot.send_message(
+            call.message.chat.id,
+            (
+                "Do you want to include PDFs/images/other files?\n"
+                "Please upload them to Google Drive, set permission to 'Anyone with the link', then share the folder/file link here."
+            ),
+            reply_markup=markup,
+        )
     bot.answer_callback_query(call.id)
+
+
+def handle_submit_assets_choice(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "submit_assets_choice":
+        return
+    if call.data == "submit_assets_yes":
+        state["step"] = "submit_drive_link"
+        bot.send_message(
+            call.message.chat.id,
+            "Send your Google Drive share link (example: https://drive.google.com/drive/folders/xxxxx, accessible to Anyone with the link):",
+            reply_markup=navigation_markup(cancel=True),
+        )
+    else:
+        state["submission"]["drive_assets_link"] = None
+        _finalize_submission(bot, call.from_user.id, call.message.chat.id)
+    bot.answer_callback_query(call.id)
+
+
+def handle_submit_drive_link(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "submit_drive_link":
+        return
+    link = message.text.strip()
+    if not utils.is_valid_url(link):
+        bot.send_message(message.chat.id, "Please send a valid Google Drive URL.")
+        return
+    state["submission"]["drive_assets_link"] = link
+    _finalize_submission(bot, message.from_user.id, message.chat.id)
 
 
 def handle_submit_custom_name(bot, message: Message) -> None:
@@ -737,7 +785,7 @@ def handle_submit_custom_name(bot, message: Message) -> None:
         return
     state["current_custom_name"] = name
     state["step"] = "submit_custom_value"
-    bot.send_message(message.chat.id, f"Enter value for '{name}':", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, f"Enter value for '{name}' (example: https://figma.com/file/abc123):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_submit_custom_value(bot, message: Message) -> None:
@@ -817,6 +865,7 @@ def _finalize_submission(bot, user_id: int, chat_id: int) -> None:
         "learned": sub.get("learned"),
         "importance_rating": sub.get("importance_rating"),
         "custom_fields": sub.get("custom_fields", []),
+        "drive_assets_link": sub.get("drive_assets_link"),
         "files": sub.get("files", []),
         "submitted_at": db.utcnow(),
         "status": config.TASK_STATUS_SUBMITTED,
@@ -890,7 +939,7 @@ def handle_admin_assign_task(bot, source) -> None:
             bot.send_message(chat_id, "Admin only")
         return
     registration_state[user_id] = {"step": "admin_task_title", "task": {"assigned_user_ids": [], "assigned_roles": [], "attachments": []}}
-    bot.send_message(chat_id, "Enter task title:", reply_markup=navigation_markup(back="admin_panel"))
+    bot.send_message(chat_id, "Enter task title (example: Build User Dashboard):", reply_markup=navigation_markup(back="admin_panel"))
     if isinstance(source, CallbackQuery):
         bot.answer_callback_query(source.id)
 
@@ -905,7 +954,7 @@ def handle_admin_task_title(bot, message: Message) -> None:
         return
     state["task"]["title"] = title
     state["step"] = "admin_task_description"
-    bot.send_message(message.chat.id, "Enter task description:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Enter task description (example: Implement responsive dashboard with charts and filters):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_admin_task_description(bot, message: Message) -> None:
@@ -918,7 +967,7 @@ def handle_admin_task_description(bot, message: Message) -> None:
         return
     state["task"]["description"] = desc
     state["step"] = "admin_task_deadline"
-    bot.send_message(message.chat.id, "Enter deadline in YYYY-MM-DD:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Enter deadline in YYYY-MM-DD (example: 2026-04-10):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_admin_task_deadline(bot, message: Message) -> None:
@@ -1222,7 +1271,7 @@ def handle_admin_mark_done(bot, call: CallbackQuery) -> None:
         return
     task_id, user_id = parsed
     registration_state[call.from_user.id] = {"step": "admin_score", "target_task_id": task_id, "target_user_id": user_id}
-    bot.send_message(call.message.chat.id, f"Enter score (0-{config.MAX_SCORE}):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(call.message.chat.id, f"Enter score (0-{config.MAX_SCORE}) (example: 85):", reply_markup=navigation_markup(cancel=True))
     bot.answer_callback_query(call.id)
 
 
@@ -1239,7 +1288,7 @@ def handle_admin_score(bot, message: Message) -> None:
         return
     state["score"] = score
     state["step"] = "admin_note"
-    bot.send_message(message.chat.id, "Add optional review note (or type '-'): ", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(message.chat.id, "Add optional review note (or type '-') (example: Great structure, improve error handling):", reply_markup=navigation_markup(cancel=True))
 
 
 def handle_admin_note(bot, message: Message) -> None:
@@ -1268,7 +1317,7 @@ def handle_admin_add_submission_note_start(bot, call: CallbackQuery) -> None:
         return
     task_id, user_id = parsed
     registration_state[call.from_user.id] = {"step": "admin_sub_note", "target_task_id": task_id, "target_user_id": user_id}
-    bot.send_message(call.message.chat.id, "Write note for this submission:", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(call.message.chat.id, "Write note for this submission (example: Please add README screenshots):", reply_markup=navigation_markup(cancel=True))
     bot.answer_callback_query(call.id)
 
 
@@ -1305,7 +1354,7 @@ def handle_admin_broadcast_start(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Admin only")
         return
     registration_state[call.from_user.id] = {"step": "admin_broadcast"}
-    bot.send_message(call.message.chat.id, "Send broadcast message text:", reply_markup=navigation_markup(back="admin_panel"))
+    bot.send_message(call.message.chat.id, "Send broadcast message text (example: Daily standup starts in 30 minutes):", reply_markup=navigation_markup(back="admin_panel"))
     bot.answer_callback_query(call.id)
 
 
@@ -1557,7 +1606,7 @@ def handle_admin_manage_roles(bot, call: CallbackQuery) -> None:
 
 def handle_admin_role_add_start(bot, call: CallbackQuery) -> None:
     registration_state[call.from_user.id] = {"step": "admin_role_add_name"}
-    bot.send_message(call.message.chat.id, "Send new role key (example: data_analyst):", reply_markup=navigation_markup(back="admin_manage_roles"))
+    bot.send_message(call.message.chat.id, "Send new role key (example: data_analyst). Use lowercase with underscore:", reply_markup=navigation_markup(back="admin_manage_roles"))
     bot.answer_callback_query(call.id)
 
 

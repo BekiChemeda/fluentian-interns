@@ -95,6 +95,8 @@ from app.handlers import (
     handle_submit_importance,
     handle_submit_learned,
     handle_submit_task,
+    handle_submit_assets_choice,
+    handle_submit_drive_link,
     handle_submit_work_url,
     handle_task_attachments,
     handle_task_detail,
@@ -263,6 +265,11 @@ def submit_learned_step(message: Message):
 @bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_importance")
 def submit_importance_step(message: Message):
     handle_submit_importance(bot, message)
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_drive_link")
+def submit_drive_link_step(message: Message):
+    handle_submit_drive_link(bot, message)
 
 
 @bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_custom_name")
@@ -449,6 +456,11 @@ def submit_deployed_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data in {"submit_custom_yes", "submit_custom_no"})
 def submit_custom_callback(call: CallbackQuery):
     handle_submit_custom_choice(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data in {"submit_assets_yes", "submit_assets_no"})
+def submit_assets_callback(call: CallbackQuery):
+    handle_submit_assets_choice(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data in {"submit_files_done", "submit_files_skip"})
