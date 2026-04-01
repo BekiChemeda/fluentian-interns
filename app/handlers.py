@@ -1,616 +1,891 @@
 """
 handlers.py
-All Telegram bot handlers for registration, dashboard, and admin features.
+Telegram handlers for onboarding, intern task workflow, and admin management.
 """
-from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from app import db, utils, config
-from app.db import log_event
-from typing import Dict
 
-# In-memory registration state: {telegram_id: {step, email, ...}}
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from telebot.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+
+from app import config, db, utils
+
+# In-memory state store
 registration_state: Dict[int, Dict] = {}
 
-# --- Registration Handlers ---
-def handle_start(bot, message: Message):
-    """Handle /start command and begin registration if user not registered."""
-    user = db.get_user(message.from_user.id)
-    if user:
-        bot.send_message(message.chat.id, "You are already registered.")
+
+def is_admin(telegram_id: int) -> bool:
+    user = db.get_user(telegram_id)
+    return bool(user and user.get("role") == "admin")
+
+
+def role_label(role: str) -> str:
+    return config.ROLE_DISPLAY.get(role, role.replace("_", " ").title())
+
+
+def short_name(user: Dict) -> str:
+    return f"{user.get('first_name', '').strip()} {user.get('last_name', '').strip()}".strip() or user.get("email", "Unknown")
+
+
+def user_dashboard_markup(user: Dict) -> InlineKeyboardMarkup:
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("My Tasks", callback_data="my_tasks"))
+    markup.add(InlineKeyboardButton("My Profile", callback_data="profile"))
+    if user.get("role") == "admin":
+        markup.add(InlineKeyboardButton("Admin Panel", callback_data="admin_panel"))
+    return markup
+
+
+def tasks_menu_markup() -> InlineKeyboardMarkup:
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Ongoing", callback_data="tasks_ongoing"))
+    markup.add(InlineKeyboardButton("Completed", callback_data="tasks_completed"))
+    markup.add(InlineKeyboardButton("Back", callback_data="go_dashboard"))
+    return markup
+
+
+def admin_panel_markup() -> InlineKeyboardMarkup:
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Add Intern", callback_data="admin_add_intern"))
+    markup.add(InlineKeyboardButton("Assign Task", callback_data="admin_assign_task"))
+    markup.add(InlineKeyboardButton("Review Submissions", callback_data="admin_review_menu"))
+    markup.add(InlineKeyboardButton("Leaderboard", callback_data="admin_leaderboard"))
+    markup.add(InlineKeyboardButton("Back", callback_data="go_dashboard"))
+    return markup
+
+
+def show_dashboard(bot, telegram_id: int, chat_id: int) -> None:
+    user = db.get_user(telegram_id)
+    if not user:
+        bot.send_message(chat_id, "Please use /start to register first.")
+        return
+    text = f"Welcome, {short_name(user)}\nRole: {role_label(user.get('role', ''))}"
+    bot.send_message(chat_id, text, reply_markup=user_dashboard_markup(user))
+
+
+def notify_users(bot, user_ids: List[int], text: str) -> None:
+    for uid in sorted(set(user_ids)):
+        try:
+            bot.send_message(uid, text)
+        except Exception:
+            # Notification should not break main flow
+            continue
+
+
+# Registration flow
+
+def handle_start(bot, message: Message) -> None:
+    existing = db.get_user(message.from_user.id)
+    if existing:
         show_dashboard(bot, message.from_user.id, message.chat.id)
         return
-    registration_state[message.from_user.id] = {"step": "email"}
-    bot.send_message(message.chat.id, "Welcome! Please enter your email to register:")
-    log_event("start_registration", {"telegram_id": message.from_user.id})
 
-def handle_email(bot, message: Message):
-    """Handle email input during registration."""
+    registration_state[message.from_user.id] = {"step": "email"}
+    bot.send_message(message.chat.id, "Welcome. Please enter your email to continue registration:")
+
+
+def handle_email(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "email":
         return
+
     email = message.text.strip().lower()
     if not utils.is_valid_email(email):
-        bot.send_message(message.chat.id, "Invalid email format. Try again:")
+        bot.send_message(message.chat.id, "Invalid email format. Please send a valid email:")
         return
+
     invited = db.get_invited_user(email)
-    tg_username = message.from_user.username or ""
-    # Allow admin registration even if not invited
-    if not invited and tg_username.lower() != "bek_i":
-        bot.send_message(message.chat.id, "Email not found in allowed list. Contact admin.")
+    if not invited:
+        bot.send_message(message.chat.id, "Your email is not in the allowed list. Contact your admin.")
         registration_state.pop(message.from_user.id, None)
-        log_event("registration_failed", {"telegram_id": message.from_user.id, "email": email})
+        db.log_event("registration_denied", {"telegram_id": message.from_user.id, "email": email})
         return
-    # If admin, allow all roles
-    if tg_username.lower() == "bek_i":
-        state["email"] = email
-        state["roles"] = ["admin"]
-        state["assigned_role"] = "admin"
-    else:
-        state["email"] = email
-        state["roles"] = invited.get("roles", config.ALLOWED_ROLES)
-        state["assigned_role"] = state["roles"][0] if state["roles"] else ""
-    state["step"] = "first_name"
-    bot.send_message(message.chat.id, "Enter your first name:")
-    log_event("email_verified", {"telegram_id": message.from_user.id, "email": email})
 
-def handle_role_selection(bot, call: CallbackQuery):
-    """Handle role selection during registration."""
-    state = registration_state.get(call.from_user.id)
-    if not state or state.get("step") != "role":
-        return
-    role = call.data.replace("role_", "")
-    if role not in state["roles"]:
-        bot.answer_callback_query(call.id, "Invalid role.")
-        return
-    state["assigned_role"] = role
-    state["step"] = "first_name"
-    bot.edit_message_text("Enter your first name:", call.message.chat.id, call.message.message_id)
+    role = invited.get("role")
+    if not role:
+        roles = invited.get("roles", [])
+        role = roles[0] if roles else "intern"
 
-# --- Registration: First Name ---
-def handle_first_name(bot, message: Message):
+    state["email"] = email
+    state["role"] = role
+    state["step"] = "first_name"
+
+    bot.send_message(
+        message.chat.id,
+        f"Email approved. Your role is {role_label(role)}.\nPlease enter your first name:",
+    )
+
+
+def handle_first_name(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "first_name":
         return
+
     first_name = message.text.strip()
     if not first_name:
-        bot.send_message(message.chat.id, "Please enter a valid first name:")
+        bot.send_message(message.chat.id, "First name cannot be empty. Please enter your first name:")
         return
+
     state["first_name"] = first_name
     state["step"] = "last_name"
-    bot.send_message(message.chat.id, "Enter your last name:")
+    bot.send_message(message.chat.id, "Please enter your last name:")
 
-# --- Registration: Last Name ---
-def handle_last_name(bot, message: Message):
+
+def handle_last_name(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "last_name":
         return
+
     last_name = message.text.strip()
     if not last_name:
-        bot.send_message(message.chat.id, "Please enter a valid last name:")
+        bot.send_message(message.chat.id, "Last name cannot be empty. Please enter your last name:")
         return
-    state["last_name"] = last_name
-    state["step"] = "confirm_role"
-    # Show assigned role and ask for confirmation
-    assigned_role = state.get("assigned_role") or (state["roles"][0] if state.get("roles") else "")
-    role_display = config.ROLE_DISPLAY.get(assigned_role, assigned_role.title())
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Yes, confirm", callback_data="confirm_role_yes"))
-    markup.add(InlineKeyboardButton("No, cancel", callback_data="confirm_role_no"))
-    bot.send_message(message.chat.id, f"Your assigned role is: {role_display}. Do you agree?", reply_markup=markup)
 
-# --- Registration: Confirm Role ---
-def handle_confirm_role(bot, call: CallbackQuery):
-    state = registration_state.get(call.from_user.id)
-    if not state or state.get("step") != "confirm_role":
+    user = {
+        "telegram_id": message.from_user.id,
+        "email": state["email"],
+        "role": state["role"],
+        "first_name": state["first_name"],
+        "last_name": last_name,
+        "state": config.USER_STATE_ACTIVE,
+        "score": 0,
+        "created_at": db.utcnow(),
+    }
+
+    if not db.add_user(user):
+        bot.send_message(message.chat.id, "Registration failed. You may already be registered.")
+        registration_state.pop(message.from_user.id, None)
         return
-    if call.data == "confirm_role_yes":
-        # Complete registration
-        user = {
-            "telegram_id": call.from_user.id,
-            "email": state["email"],
-            "role": state.get("assigned_role") or (state["roles"][0] if state.get("roles") else ""),
-            "first_name": state["first_name"],
-            "last_name": state["last_name"],
-            "state": config.USER_STATE_ACTIVE,
-            "score": 0
-        }
-        if db.add_user(user):
-            bot.edit_message_text(f"Registration complete! Welcome, {user['first_name']} {user['last_name']} as {config.ROLE_DISPLAY.get(user['role'], user['role'].title())}.", call.message.chat.id, call.message.message_id)
-            registration_state.pop(call.from_user.id, None)
-            log_event("registration_success", user)
-            show_dashboard(bot, call.from_user.id, call.message.chat.id)
+
+    registration_state.pop(message.from_user.id, None)
+    db.log_event("registration_success", {"telegram_id": message.from_user.id, "email": user["email"]})
+
+    bot.send_message(
+        message.chat.id,
+        f"Registration complete. Role: {role_label(user['role'])}",
+    )
+    show_dashboard(bot, message.from_user.id, message.chat.id)
+
+
+# User dashboard and tasks
+
+def handle_dashboard_callback(bot, call: CallbackQuery) -> None:
+    show_dashboard(bot, call.from_user.id, call.message.chat.id)
+    bot.answer_callback_query(call.id)
+
+
+def handle_profile(bot, call: CallbackQuery) -> None:
+    user = db.get_user(call.from_user.id)
+    if not user:
+        bot.answer_callback_query(call.id, "Not registered")
+        return
+
+    text = (
+        "Profile\n"
+        f"Name: {short_name(user)}\n"
+        f"Email: {user.get('email', '')}\n"
+        f"Role: {role_label(user.get('role', ''))}\n"
+        f"Score: {user.get('score', 0)}"
+    )
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=tasks_menu_markup())
+    bot.answer_callback_query(call.id)
+
+
+def handle_my_tasks(bot, call: CallbackQuery) -> None:
+    bot.edit_message_text("My Tasks", call.message.chat.id, call.message.message_id, reply_markup=tasks_menu_markup())
+    bot.answer_callback_query(call.id)
+
+
+def _task_status_for_user(task: Dict, user_id: int) -> str:
+    submission = db.get_submission(str(task["_id"]), user_id)
+    if submission and submission.get("status") == config.TASK_STATUS_DONE:
+        return config.TASK_STATUS_COMPLETED
+    return config.TASK_STATUS_ONGOING
+
+
+def _task_list_for_user(user: Dict, requested_status: str) -> List[Dict]:
+    all_tasks = db.get_tasks_for_user(user)
+    result = []
+    for task in all_tasks:
+        if task.get("status") == config.TASK_STATUS_COMPLETED:
+            effective = config.TASK_STATUS_COMPLETED
         else:
-            bot.edit_message_text("Registration failed or duplicate.", call.message.chat.id, call.message.message_id)
-            registration_state.pop(call.from_user.id, None)
-            log_event("registration_failed", user)
-    else:
-        bot.edit_message_text("Registration cancelled.", call.message.chat.id, call.message.message_id)
-        registration_state.pop(call.from_user.id, None)
+            effective = _task_status_for_user(task, user["telegram_id"])
+        if effective == requested_status:
+            result.append(task)
+    return result
 
-# --- Dashboard & Task Handlers ---
-def show_dashboard(bot, telegram_id: int, chat_id: int):
-    """Show user dashboard with task options."""
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Ongoing Tasks", callback_data="tasks_ongoing"))
-    markup.add(InlineKeyboardButton("Completed Tasks", callback_data="tasks_completed"))
-    bot.send_message(chat_id, "Dashboard:", reply_markup=markup)
 
-def handle_task_list(bot, call: CallbackQuery, status: str):
-    """Show tasks for user by status."""
+def handle_task_list(bot, call: CallbackQuery, status: str) -> None:
     user = db.get_user(call.from_user.id)
     if not user:
-        bot.answer_callback_query(call.id, "Not registered.")
+        bot.answer_callback_query(call.id, "Not registered")
         return
-    tasks = db.get_tasks_for_user(call.from_user.id, status)
-    tasks += db.get_tasks_for_role(user["role"], status)
+
+    wanted = config.TASK_STATUS_ONGOING if status == "ONGOING" else config.TASK_STATUS_COMPLETED
+    tasks = _task_list_for_user(user, wanted)
+
     if not tasks:
-        bot.edit_message_text(f"No {status.lower()} tasks.", call.message.chat.id, call.message.message_id)
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("Back", callback_data="my_tasks"))
+        bot.edit_message_text(f"No {wanted.lower()} tasks.", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.answer_callback_query(call.id)
         return
-    text = f"{status.title()} Tasks:\n"
-    for t in tasks:
-        text += f"\n- {t['title']}: {t.get('description', '')}"
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
 
-# --- User Dashboard: Profile & Tasks ---
-def handle_user_profile(bot, call: CallbackQuery):
-    user = db.get_user(call.from_user.id)
-    if not user:
-        bot.answer_callback_query(call.id, "Not registered.")
-        return
-    text = f"Profile:\nName: {user.get('first_name','')} {user.get('last_name','')}\nEmail: {user.get('email','')}\nRole: {config.ROLE_DISPLAY.get(user.get('role',''), user.get('role','').title())}\nScore: {user.get('score',0)}"
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id)
-
-# --- User: Ongoing/Completed Tasks List ---
-def handle_user_task_list(bot, call: CallbackQuery, status: str):
-    user = db.get_user(call.from_user.id)
-    if not user:
-        bot.answer_callback_query(call.id, "Not registered.")
-        return
-    tasks = db.get_tasks_for_user(call.from_user.id, status)
-    tasks += db.get_tasks_for_role(user["role"], status)
-    if not tasks:
-        bot.edit_message_text(f"No {status.lower()} tasks.", call.message.chat.id, call.message.message_id)
-        return
     markup = InlineKeyboardMarkup()
-    for t in tasks:
-        markup.add(InlineKeyboardButton(t['title'], callback_data=f"user_task_{t['_id']}"))
-    bot.edit_message_text(f"{status.title()} Tasks:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    for task in tasks:
+        markup.add(InlineKeyboardButton(task.get("title", "Untitled Task"), callback_data=f"task|{task['_id']}"))
+    markup.add(InlineKeyboardButton("Back", callback_data="my_tasks"))
 
-# --- User: Task Detail & Submission ---
-def handle_user_task_detail(bot, call: CallbackQuery):
-    from bson import ObjectId
-    task_id = call.data.replace("user_task_", "")
-    task = db.tasks.find_one({"_id": ObjectId(task_id)})
-    if not task:
-        bot.answer_callback_query(call.id, "Task not found.")
+    bot.edit_message_text(f"{wanted.title()} Tasks", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)
+
+
+def handle_task_detail(bot, call: CallbackQuery) -> None:
+    _, task_id = call.data.split("|", 1)
+    task = db.get_task(task_id)
+    user = db.get_user(call.from_user.id)
+    if not task or not user:
+        bot.answer_callback_query(call.id, "Task not found")
         return
-    text = f"Task: {task['title']}\nDescription: {task.get('description','')}\nDeadline: {task.get('deadline','')}\nStatus: {task.get('status','')}"
+
+    submission = db.get_submission(task_id, call.from_user.id)
+    sub_status = submission.get("status") if submission else "not submitted"
+
+    text = (
+        f"Task: {task.get('title', '')}\n"
+        f"Description: {task.get('description', '')}\n"
+        f"Deadline: {task.get('deadline', 'N/A')}\n"
+        f"Task Status: {task.get('status', 'ONGOING')}\n"
+        f"Your Submission: {sub_status}"
+    )
+
     markup = InlineKeyboardMarkup()
-    if task.get('status') == config.TASK_STATUS_ONGOING:
-        markup.add(InlineKeyboardButton("Submit Task", callback_data=f"user_submit_{task_id}"))
+    if _task_status_for_user(task, user["telegram_id"]) == config.TASK_STATUS_ONGOING:
+        markup.add(InlineKeyboardButton("Submit Task", callback_data=f"submit|{task_id}"))
+    markup.add(InlineKeyboardButton("Back", callback_data="tasks_ongoing"))
+
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)
 
-# --- User: Submit Task (link) ---
-def handle_user_submit_task(bot, call: CallbackQuery):
-    state = registration_state.setdefault(call.from_user.id, {})
-    state['step'] = 'user_submit_link'
-    state['submit_task_id'] = call.data.replace('user_submit_', '')
-    bot.send_message(call.message.chat.id, "Send the link to your submission (GitHub, Google Drive, etc.). Make sure privacy settings allow admin access.")
 
-# --- User: Receive Submission Link ---
-def handle_user_submit_link(bot, message: Message):
-    state = registration_state.get(message.from_user.id)
-    if not state or state.get('step') != 'user_submit_link':
-        return
-    link = message.text.strip()
-    if not link:
-        bot.send_message(message.chat.id, "Please send a valid link:")
-        return
-    state['submit_link'] = link
-    state['step'] = 'user_submit_files'
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Skip file upload", callback_data="user_submit_skipfiles"))
-    bot.send_message(message.chat.id, "Now upload screenshots, screen recordings, or other files (one at a time). Click 'Skip file upload' if you have no files.", reply_markup=markup)
+# Submission flow: work url -> deployed? -> live demo url (optional) -> learned -> importance rating
 
-# --- User: Receive Submission Files ---
-def handle_user_submit_file(bot, message: Message):
-    state = registration_state.get(message.from_user.id)
-    if not state or state.get('step') != 'user_submit_files':
+def handle_submit_task(bot, call: CallbackQuery) -> None:
+    _, task_id = call.data.split("|", 1)
+    task = db.get_task(task_id)
+    user = db.get_user(call.from_user.id)
+    if not task or not user:
+        bot.answer_callback_query(call.id, "Task not found")
         return
-    files = state.setdefault('submit_files', [])
-    if message.document:
-        files.append({'file_id': message.document.file_id, 'file_name': message.document.file_name})
-    elif message.photo:
-        files.append({'file_id': message.photo[-1].file_id, 'file_name': 'photo.jpg'})
-    else:
-        bot.send_message(message.chat.id, "Please upload a file or photo, or click 'Skip file upload'.")
-        return
-    state['submit_files'] = files
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Done uploading", callback_data="user_submit_donefiles"))
-    markup.add(InlineKeyboardButton("Upload another file", callback_data="user_submit_morefiles"))
-    bot.send_message(message.chat.id, "File received. Upload another or click 'Done uploading'.", reply_markup=markup)
 
-# --- User: Skip/Done File Upload ---
-def handle_user_submit_skipfiles(bot, call: CallbackQuery):
-    state = registration_state.get(call.from_user.id)
-    if not state or state.get('step') != 'user_submit_files':
+    if _task_status_for_user(task, user["telegram_id"]) != config.TASK_STATUS_ONGOING:
+        bot.answer_callback_query(call.id, "Task already completed")
         return
-    save_user_submission(bot, call, state)
 
-def handle_user_submit_donefiles(bot, call: CallbackQuery):
-    state = registration_state.get(call.from_user.id)
-    if not state or state.get('step') != 'user_submit_files':
-        return
-    save_user_submission(bot, call, state)
-
-def save_user_submission(bot, call, state):
-    from datetime import datetime
-    from bson import ObjectId
-    submission = {
-        'user_id': call.from_user.id,
-        'task_id': state['submit_task_id'],
-        'link': state.get('submit_link'),
-        'files': state.get('submit_files', []),
-        'submitted_at': datetime.utcnow(),
-        'status': config.TASK_STATUS_SUBMITTED
+    registration_state[call.from_user.id] = {
+        "step": "submit_work_url",
+        "task_id": task_id,
+        "submission": {},
     }
-    db.add_submission(submission)
-    db.update_task(ObjectId(state['submit_task_id']), {'status': config.TASK_STATUS_SUBMITTED})
-    bot.edit_message_text("Submission received! Admins will review your work.", call.message.chat.id, call.message.message_id)
-    registration_state.pop(call.from_user.id, None)
+    bot.send_message(call.message.chat.id, "Send your GitHub or Figma URL:")
+    bot.answer_callback_query(call.id)
 
-# --- Admin Handlers ---
-def is_admin(telegram_id: int) -> bool:
-    user = db.get_user(telegram_id)
-    return user and user.get("role") == "admin"
 
-def handle_assign_task(bot, message: Message):
-    """Admin: Start task assignment flow."""
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Admin only.")
-        return
-    # For brevity, ask for title, description, then assign to user or role
-    bot.send_message(message.chat.id, "Enter task title:")
-    registration_state[message.from_user.id] = {"step": "task_title"}
-
-def handle_task_title(bot, message: Message):
+def handle_submit_work_url(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
-    if not state or state.get("step") != "task_title":
+    if not state or state.get("step") != "submit_work_url":
         return
-    state["title"] = message.text.strip()
-    state["step"] = "task_desc"
-    bot.send_message(message.chat.id, "Enter task description:")
 
-def handle_task_desc(bot, message: Message):
-    state = registration_state.get(message.from_user.id)
-    if not state or state.get("step") != "task_desc":
+    url = message.text.strip()
+    if not utils.is_valid_url(url):
+        bot.send_message(message.chat.id, "Please send a valid URL (must start with http:// or https://):")
         return
-    state["description"] = message.text.strip()
-    state["step"] = "task_assign"
-    # Show assign options
+
+    state["submission"]["work_url"] = url
+    state["step"] = "submit_deployed"
+
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Assign to User", callback_data="assign_user"))
-    markup.add(InlineKeyboardButton("Assign to Role", callback_data="assign_role"))
-    bot.send_message(message.chat.id, "Assign to:", reply_markup=markup)
+    markup.add(InlineKeyboardButton("Yes", callback_data="submit_deployed_yes"))
+    markup.add(InlineKeyboardButton("No", callback_data="submit_deployed_no"))
+    bot.send_message(message.chat.id, "Is this task deployed/live?", reply_markup=markup)
 
-def handle_assign_choice(bot, call: CallbackQuery):
-    state = registration_state.get(call.from_user.id)
-    if not state or state.get("step") != "task_assign":
-        return
-    if call.data == "assign_user":
-        # List users
-        user_list = db.users.find()
-        markup = InlineKeyboardMarkup()
-        for u in user_list:
-            markup.add(InlineKeyboardButton(f"{u['email']} ({u['role']})", callback_data=f"assign_uid_{u['telegram_id']}"))
-        bot.edit_message_text("Select user:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-    elif call.data == "assign_role":
-        markup = InlineKeyboardMarkup()
-        for role in config.ALLOWED_ROLES:
-            markup.add(InlineKeyboardButton(role.title(), callback_data=f"assign_role_{role}"))
-        bot.edit_message_text("Select role:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-def handle_assign_user(bot, call: CallbackQuery):
+def handle_submit_deployed_choice(bot, call: CallbackQuery) -> None:
     state = registration_state.get(call.from_user.id)
-    if not state or state.get("step") != "task_assign":
+    if not state or state.get("step") != "submit_deployed":
         return
-    if call.data.startswith("assign_uid_"):
-        uid = int(call.data.replace("assign_uid_", ""))
-        state["assigned_to"] = [uid]
-        state["assigned_role"] = None
-        save_task_from_state(bot, call)
-    elif call.data.startswith("assign_role_"):
-        role = call.data.replace("assign_role_", "")
-        state["assigned_to"] = []
-        state["assigned_role"] = role
-        save_task_from_state(bot, call)
 
-def save_task_from_state(bot, call: CallbackQuery):
-    state = registration_state.get(call.from_user.id)
-    if not state:
-        return
-    from datetime import datetime
-    task = {
-        "title": state["title"],
-        "description": state["description"],
-        "assigned_to": state.get("assigned_to", []),
-        "assigned_role": state.get("assigned_role"),
-        "status": config.TASK_STATUS_ONGOING,
-        "created_at": datetime.utcnow()
-    }
-    if db.add_task(task):
-        bot.edit_message_text("Task assigned!", call.message.chat.id, call.message.message_id)
-        log_event("task_assigned", {"admin": call.from_user.id, **task})
+    has_demo = call.data.endswith("yes")
+    state["submission"]["is_deployed"] = has_demo
+
+    if has_demo:
+        state["step"] = "submit_demo_url"
+        bot.send_message(call.message.chat.id, "Send the live demo URL:")
     else:
-        bot.edit_message_text("Failed to assign task.", call.message.chat.id, call.message.message_id)
-    registration_state.pop(call.from_user.id, None)
+        state["submission"]["demo_url"] = None
+        state["step"] = "submit_learned"
+        bot.send_message(call.message.chat.id, "What did you learn from this task?")
 
-# --- Task Status Update (Admin) ---
-def handle_update_task(bot, message: Message):
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Admin only.")
+    bot.answer_callback_query(call.id)
+
+
+def handle_submit_demo_url(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "submit_demo_url":
         return
-    # For brevity, not fully implemented: would list tasks and allow update
-    bot.send_message(message.chat.id, "Feature coming soon.")
 
-# --- Admin Add Allowed Email ---
-def handle_admin_add_allowed(bot, call: CallbackQuery):
-    """Admin: Start flow to add allowed email."""
+    url = message.text.strip()
+    if not utils.is_valid_url(url):
+        bot.send_message(message.chat.id, "Please send a valid demo URL (http:// or https://):")
+        return
+
+    state["submission"]["demo_url"] = url
+    state["step"] = "submit_learned"
+    bot.send_message(message.chat.id, "What did you learn from this task?")
+
+
+def handle_submit_learned(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "submit_learned":
+        return
+
+    learned = message.text.strip()
+    if len(learned) < 5:
+        bot.send_message(message.chat.id, "Please provide a bit more detail about what you learned:")
+        return
+
+    state["submission"]["learned"] = learned
+    state["step"] = "submit_importance"
+    bot.send_message(message.chat.id, "Rate this task importance from 1 to 10:")
+
+
+def handle_submit_importance(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "submit_importance":
+        return
+
+    try:
+        importance = int(message.text.strip())
+        if importance < 1 or importance > 10:
+            raise ValueError
+    except ValueError:
+        bot.send_message(message.chat.id, "Please enter a number between 1 and 10:")
+        return
+
+    task_id = state["task_id"]
+    payload = {
+        "task_id": task_id,
+        "user_id": message.from_user.id,
+        "work_url": state["submission"].get("work_url"),
+        "is_deployed": state["submission"].get("is_deployed", False),
+        "demo_url": state["submission"].get("demo_url"),
+        "learned": state["submission"].get("learned"),
+        "importance_rating": importance,
+        "submitted_at": db.utcnow(),
+        "status": config.TASK_STATUS_SUBMITTED,
+    }
+
+    ok = db.upsert_submission(task_id, message.from_user.id, payload)
+    if not ok:
+        bot.send_message(message.chat.id, "Failed to save submission. Please try again.")
+        registration_state.pop(message.from_user.id, None)
+        return
+
+    db.log_event("task_submitted", {"task_id": task_id, "user_id": message.from_user.id})
+    registration_state.pop(message.from_user.id, None)
+
+    bot.send_message(message.chat.id, "Submission saved and sent for review.")
+    notify_admins_of_submission(bot, message.from_user.id, task_id)
+
+
+def notify_admins_of_submission(bot, user_id: int, task_id: str) -> None:
+    user = db.get_user(user_id)
+    task = db.get_task(task_id)
+    if not user or not task:
+        return
+
+    admins = db.get_users_by_role("admin")
+    text = f"New submission from {short_name(user)} for task: {task.get('title', '')}"
+    notify_users(bot, [admin["telegram_id"] for admin in admins], text)
+
+
+# Admin panel and intern management
+
+def handle_admin_panel(bot, call: CallbackQuery) -> None:
     if not is_admin(call.from_user.id):
-        bot.answer_callback_query(call.id, "Admin only.")
+        bot.answer_callback_query(call.id, "Admin only")
         return
-    registration_state[call.from_user.id] = {"step": "admin_add_email"}
-    bot.send_message(call.message.chat.id, "Enter email to allow:")
+    bot.edit_message_text("Admin Panel", call.message.chat.id, call.message.message_id, reply_markup=admin_panel_markup())
+    bot.answer_callback_query(call.id)
 
-def handle_admin_add_email(bot, message: Message):
+
+def handle_admin_add_intern(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+
+    registration_state[call.from_user.id] = {"step": "admin_add_email"}
+    bot.send_message(call.message.chat.id, "Enter intern email to allow:")
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_add_email(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_add_email":
         return
+
     email = message.text.strip().lower()
     if not utils.is_valid_email(email):
-        bot.send_message(message.chat.id, "Invalid email format. Try again:")
+        bot.send_message(message.chat.id, "Invalid email format. Enter a valid email:")
         return
+
     state["email"] = email
     state["step"] = "admin_add_role"
-    # Show role selection
+
     markup = InlineKeyboardMarkup()
     for role in config.ALLOWED_ROLES:
-        markup.add(InlineKeyboardButton(role.title(), callback_data=f"admin_role_{role}"))
-    bot.send_message(message.chat.id, "Select role for allowed email:", reply_markup=markup)
+        if role == "admin":
+            continue
+        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_add_role|{role}"))
 
-def handle_admin_add_role(bot, call: CallbackQuery):
+    bot.send_message(message.chat.id, "Select role for this intern:", reply_markup=markup)
+
+
+def handle_admin_add_role(bot, call: CallbackQuery) -> None:
     state = registration_state.get(call.from_user.id)
     if not state or state.get("step") != "admin_add_role":
         return
-    role = call.data.replace("admin_role_", "")
+
+    _, role = call.data.split("|", 1)
     email = state.get("email")
     if not email or role not in config.ALLOWED_ROLES:
-        bot.answer_callback_query(call.id, "Invalid role or email.")
+        bot.answer_callback_query(call.id, "Invalid input")
         return
-    # Add to invited_users
-    try:
-        db.invited_users.update_one({"email": email}, {"$set": {"email": email, "roles": [role]}}, upsert=True)
-        bot.edit_message_text(f"Added {email} as allowed with role {role}.", call.message.chat.id, call.message.message_id)
-        log_event("admin_added_allowed", {"admin": call.from_user.id, "email": email, "role": role})
-    except Exception as e:
-        bot.edit_message_text(f"Failed to add allowed email: {e}", call.message.chat.id, call.message.message_id)
+
+    ok = db.upsert_invited_user(email, role, added_by=call.from_user.id)
     registration_state.pop(call.from_user.id, None)
 
-# --- Admin: Assign Task Flow ---
-def handle_admin_assign_task(bot, message: Message):
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Admin only.")
-        return
-    registration_state[message.from_user.id] = {"step": "admin_task_title"}
-    bot.send_message(message.chat.id, "Enter task title:")
+    if ok:
+        bot.edit_message_text(
+            f"Intern added to allowed list\nEmail: {email}\nRole: {role_label(role)}",
+            call.message.chat.id,
+            call.message.message_id,
+        )
+        db.log_event("admin_added_intern", {"admin": call.from_user.id, "email": email, "role": role})
+    else:
+        bot.edit_message_text("Failed to add intern.", call.message.chat.id, call.message.message_id)
 
-def handle_admin_task_title(bot, message: Message):
+    bot.answer_callback_query(call.id)
+
+
+# Admin task assignment: title -> description -> deadline -> assign type -> role/users
+
+def handle_admin_assign_task(bot, source) -> None:
+    user_id = source.from_user.id
+    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+
+    if not is_admin(user_id):
+        if isinstance(source, CallbackQuery):
+            bot.answer_callback_query(source.id, "Admin only")
+        else:
+            bot.send_message(chat_id, "Admin only")
+        return
+
+    registration_state[user_id] = {
+        "step": "admin_task_title",
+        "task": {"assigned_user_ids": [], "assigned_roles": []},
+    }
+    bot.send_message(chat_id, "Enter task title:")
+    if isinstance(source, CallbackQuery):
+        bot.answer_callback_query(source.id)
+
+
+def handle_admin_task_title(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_task_title":
         return
-    state["title"] = message.text.strip()
-    state["step"] = "admin_task_desc"
+
+    title = message.text.strip()
+    if not title:
+        bot.send_message(message.chat.id, "Title cannot be empty. Enter task title:")
+        return
+
+    state["task"]["title"] = title
+    state["step"] = "admin_task_description"
     bot.send_message(message.chat.id, "Enter task description:")
 
-def handle_admin_task_desc(bot, message: Message):
+
+def handle_admin_task_description(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
-    if not state or state.get("step") != "admin_task_desc":
+    if not state or state.get("step") != "admin_task_description":
         return
-    state["description"] = message.text.strip()
-    state["step"] = "admin_task_assign_type"
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Assign to Role", callback_data="admin_assign_role"))
-    markup.add(InlineKeyboardButton("Assign to User(s)", callback_data="admin_assign_users"))
-    bot.send_message(message.chat.id, "Assign this task to:", reply_markup=markup)
 
-def handle_admin_assign_type(bot, call: CallbackQuery):
-    state = registration_state.get(call.from.user.id)
-    if not state or state.get("step") != "admin_task_assign_type":
+    description = message.text.strip()
+    if not description:
+        bot.send_message(message.chat.id, "Description cannot be empty. Enter task description:")
         return
-    if call.data == "admin_assign_role":
-        markup = InlineKeyboardMarkup()
-        for role in config.ALLOWED_ROLES:
-            if role == "admin": continue
-            markup.add(InlineKeyboardButton(config.ROLE_DISPLAY[role], callback_data=f"admin_task_role_{role}"))
-        bot.edit_message_text("Select role:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-        state["step"] = "admin_task_role"
-    elif call.data == "admin_assign_users":
-        # Start paginated user selection
-        state["step"] = "admin_task_user_page"
-        state["user_page"] = 0
-        show_admin_user_page(bot, call.message, 0)
 
-def handle_admin_task_role(bot, call: CallbackQuery):
-    state = registration_state.get(call.from.user.id)
-    if not state or state.get("step") != "admin_task_role":
-        return
-    role = call.data.replace("admin_task_role_", "")
-    state["assigned_role"] = role
-    state["assigned_to"] = []
+    state["task"]["description"] = description
     state["step"] = "admin_task_deadline"
-    bot.edit_message_text("Enter deadline for this task (YYYY-MM-DD):", call.message.chat.id, call.message.message_id)
+    bot.send_message(message.chat.id, "Enter deadline in YYYY-MM-DD format:")
 
-def show_admin_user_page(bot, message, page):
-    users = db.get_users_paginated(skip=page*5, limit=5)
-    if not users:
-        bot.send_message(message.chat.id, "No users found.")
-        return
-    markup = InlineKeyboardMarkup()
-    for u in users:
-        markup.add(InlineKeyboardButton(f"{u.get('first_name','')} {u.get('last_name','')} ({u.get('email','')})", callback_data=f"admin_task_user_{u['telegram_id']}"))
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("Prev", callback_data=f"admin_task_userpage_{page-1}"))
-    nav.append(InlineKeyboardButton("Next", callback_data=f"admin_task_userpage_{page+1}"))
-    markup.row(*nav)
-    bot.send_message(message.chat.id, "Select user(s) to assign:", reply_markup=markup)
 
-def handle_admin_task_user_page(bot, call: CallbackQuery):
-    page = int(call.data.replace("admin_task_userpage_", ""))
-    show_admin_user_page(bot, call.message, page)
-    state = registration_state.get(call.from.user.id)
-    if state:
-        state["user_page"] = page
-
-def handle_admin_task_user_select(bot, call: CallbackQuery):
-    state = registration_state.get(call.from.user.id)
-    if not state or not state.get("step","").startswith("admin_task_user"):
-        return
-    uid = int(call.data.replace("admin_task_user_", ""))
-    assigned = state.setdefault("assigned_to", [])
-    if uid not in assigned:
-        assigned.append(uid)
-    # Stay on user selection, or add a 'Done' button
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Done selecting", callback_data="admin_task_user_done"))
-    bot.edit_message_text(f"Selected users: {len(assigned)}. Click Done when finished.", call.message.chat.id, call.message.message_id, reply_markup=markup)
-    state["step"] = "admin_task_user_done"
-
-def handle_admin_task_user_done(bot, call: CallbackQuery):
-    state = registration_state.get(call.from.user.id)
-    if not state or state.get("step") != "admin_task_user_done":
-        return
-    state["assigned_role"] = None
-    state["step"] = "admin_task_deadline"
-    bot.edit_message_text("Enter deadline for this task (YYYY-MM-DD):", call.message.chat.id, call.message.message_id)
-
-def handle_admin_task_deadline(bot, message: Message):
+def handle_admin_task_deadline(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_task_deadline":
         return
+
     deadline = message.text.strip()
-    from datetime import datetime
     try:
         datetime.strptime(deadline, "%Y-%m-%d")
-    except Exception:
-        bot.send_message(message.chat.id, "Invalid date format. Use YYYY-MM-DD:")
+    except ValueError:
+        bot.send_message(message.chat.id, "Invalid date format. Please use YYYY-MM-DD:")
         return
-    state["deadline"] = deadline
-    # Save task
-    task = {
-        "title": state["title"],
-        "description": state["description"],
-        "assigned_to": state.get("assigned_to", []),
-        "assigned_role": state.get("assigned_role"),
-        "status": config.TASK_STATUS_ONGOING,
-        "created_at": datetime.utcnow(),
-        "deadline": deadline
-    }
-    if db.add_task(task):
-        bot.send_message(message.chat.id, "Task assigned!")
-        log_event("task_assigned", {"admin": message.from_user.id, **task})
-        # Notify users
-        notify_users = state.get("assigned_to", [])
-        if state.get("assigned_role"):
-            notify_users += [u["telegram_id"] for u in db.get_users_by_role(state["assigned_role"])]
-        for uid in set(notify_users):
-            try:
-                bot.send_message(uid, f"New task assigned: {task['title']} (Deadline: {deadline})")
-            except Exception:
-                pass
+
+    state["task"]["deadline"] = deadline
+    state["step"] = "admin_task_assign_type"
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Assign to Role", callback_data="admin_assign_type|role"))
+    markup.add(InlineKeyboardButton("Assign to User(s)", callback_data="admin_assign_type|users"))
+    bot.send_message(message.chat.id, "How do you want to assign this task?", reply_markup=markup)
+
+
+def handle_admin_assign_type(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "admin_task_assign_type":
+        return
+
+    _, assign_type = call.data.split("|", 1)
+
+    if assign_type == "role":
+        state["step"] = "admin_task_select_role"
+        markup = InlineKeyboardMarkup()
+        for role in config.ALLOWED_ROLES:
+            if role == "admin":
+                continue
+            markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_task_role|{role}"))
+        bot.edit_message_text("Select role:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     else:
-        bot.send_message(message.chat.id, "Failed to assign task.")
-    registration_state.pop(message.from_user.id, None)
+        state["step"] = "admin_task_select_users"
+        state["user_page"] = 0
+        state["task"]["assigned_user_ids"] = []
+        _show_user_picker(bot, call.message.chat.id, call.message.message_id, state)
 
-# --- Admin: Review & Score Submissions ---
-def handle_admin_review_menu(bot, message: Message):
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Admin only.")
-        return
-    # List all submitted tasks
-    from bson import ObjectId
-    submitted = list(db.submissions.find({'status': config.TASK_STATUS_SUBMITTED}))
-    if not submitted:
-        bot.send_message(message.chat.id, "No submitted tasks to review.")
-        return
-    markup = InlineKeyboardMarkup()
-    for s in submitted:
-        user = db.get_user(s['user_id'])
-        task = db.tasks.find_one({'_id': ObjectId(s['task_id'])})
-        if not user or not task: continue
-        markup.add(InlineKeyboardButton(f"{user.get('first_name','')} {user.get('last_name','')} - {task['title']}", callback_data=f"admin_review_{s['_id']}"))
-    bot.send_message(message.chat.id, "Select a submission to review:", reply_markup=markup)
+    bot.answer_callback_query(call.id)
 
-def handle_admin_review_detail(bot, call: CallbackQuery):
-    from bson import ObjectId
-    sub_id = call.data.replace('admin_review_', '')
-    submission = db.submissions.find_one({'_id': ObjectId(sub_id)})
-    if not submission:
-        bot.answer_callback_query(call.id, "Submission not found.")
+
+def handle_admin_task_role(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "admin_task_select_role":
         return
-    user = db.get_user(submission['user_id'])
-    task = db.tasks.find_one({'_id': ObjectId(submission['task_id'])})
-    text = f"Submission for {task['title']}\nBy: {user.get('first_name','')} {user.get('last_name','')}\nLink: {submission.get('link','')}\nFiles: {len(submission.get('files',[]))}\nStatus: {submission.get('status','')}"
+
+    _, role = call.data.split("|", 1)
+    state["task"]["assigned_roles"] = [role]
+    state["task"]["assigned_user_ids"] = []
+
+    _finalize_task_creation(bot, call.from_user.id, call.message.chat.id)
+    bot.answer_callback_query(call.id)
+
+
+def _show_user_picker(bot, chat_id: int, message_id: int, state: Dict) -> None:
+    page = state.get("user_page", 0)
+    per_page = 6
+    candidates = db.get_users_paginated(skip=page * per_page, limit=per_page)
+
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Mark On Review", callback_data=f"admin_review_on_{sub_id}"))
-    markup.add(InlineKeyboardButton("Mark Done & Score", callback_data=f"admin_review_done_{sub_id}"))
+    selected = set(state["task"].get("assigned_user_ids", []))
+
+    for user in candidates:
+        uid = user["telegram_id"]
+        check = "[x]" if uid in selected else "[ ]"
+        label = f"{check} {short_name(user)} ({role_label(user.get('role', ''))})"
+        markup.add(InlineKeyboardButton(label, callback_data=f"admin_pick_user|{uid}"))
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("Prev", callback_data=f"admin_user_page|{page - 1}"))
+    if len(candidates) == per_page:
+        nav_row.append(InlineKeyboardButton("Next", callback_data=f"admin_user_page|{page + 1}"))
+    if nav_row:
+        markup.row(*nav_row)
+
+    markup.add(InlineKeyboardButton("Done", callback_data="admin_users_done"))
+
+    bot.edit_message_text(
+        "Select user(s). Tap again to unselect.",
+        chat_id,
+        message_id,
+        reply_markup=markup,
+    )
+
+
+def handle_admin_user_page(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "admin_task_select_users":
+        return
+
+    _, page = call.data.split("|", 1)
+    state["user_page"] = max(0, int(page))
+    _show_user_picker(bot, call.message.chat.id, call.message.message_id, state)
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_pick_user(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "admin_task_select_users":
+        return
+
+    _, raw_uid = call.data.split("|", 1)
+    uid = int(raw_uid)
+    selected = state["task"].setdefault("assigned_user_ids", [])
+
+    if uid in selected:
+        selected.remove(uid)
+    else:
+        selected.append(uid)
+
+    _show_user_picker(bot, call.message.chat.id, call.message.message_id, state)
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_users_done(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") != "admin_task_select_users":
+        return
+
+    if not state["task"].get("assigned_user_ids"):
+        bot.answer_callback_query(call.id, "Select at least one user")
+        return
+
+    state["task"]["assigned_roles"] = []
+    _finalize_task_creation(bot, call.from_user.id, call.message.chat.id)
+    bot.answer_callback_query(call.id)
+
+
+def _finalize_task_creation(bot, admin_id: int, chat_id: int) -> None:
+    state = registration_state.get(admin_id)
+    if not state:
+        return
+
+    task = {
+        "title": state["task"]["title"],
+        "description": state["task"]["description"],
+        "deadline": state["task"]["deadline"],
+        "assigned_user_ids": state["task"].get("assigned_user_ids", []),
+        "assigned_roles": state["task"].get("assigned_roles", []),
+        "status": config.TASK_STATUS_ONGOING,
+        "created_by": admin_id,
+        "created_at": db.utcnow(),
+    }
+
+    task_id = db.create_task(task)
+    if not task_id:
+        bot.send_message(chat_id, "Failed to assign task.")
+        registration_state.pop(admin_id, None)
+        return
+
+    registration_state.pop(admin_id, None)
+
+    # Resolve audience from explicit users and roles
+    targets = set(task["assigned_user_ids"])
+    for role in task["assigned_roles"]:
+        for user in db.get_users_by_role(role):
+            targets.add(user["telegram_id"])
+
+    notify_users(
+        bot,
+        list(targets),
+        f"New task assigned: {task['title']}\nDeadline: {task['deadline']}",
+    )
+
+    db.log_event("task_assigned", {"task_id": str(task_id), "admin": admin_id, "targets": list(targets)})
+    bot.send_message(chat_id, "Task assigned successfully.")
+
+
+# Admin review and scoring
+
+def _parse_review_callback(data: str) -> Optional[Tuple[str, int]]:
+    # Format: action|task_id|user_id
+    parts = data.split("|")
+    if len(parts) != 3:
+        return None
+    _, task_id, raw_uid = parts
+    try:
+        return task_id, int(raw_uid)
+    except ValueError:
+        return None
+
+
+def handle_admin_review_menu(bot, source) -> None:
+    user_id = source.from_user.id
+    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+
+    if not is_admin(user_id):
+        if isinstance(source, CallbackQuery):
+            bot.answer_callback_query(source.id, "Admin only")
+        else:
+            bot.send_message(chat_id, "Admin only")
+        return
+
+    reviewables = [s for s in db.list_submissions() if s.get("status") in {config.TASK_STATUS_SUBMITTED, config.TASK_STATUS_ON_REVIEW}]
+    if not reviewables:
+        bot.send_message(chat_id, "No submissions waiting for review.")
+        return
+
+    markup = InlineKeyboardMarkup()
+    for sub in reviewables:
+        task = db.get_task(sub["task_id"])
+        user = db.get_user(sub["user_id"])
+        if not task or not user:
+            continue
+        label = f"{short_name(user)} - {task.get('title', '')}"
+        markup.add(InlineKeyboardButton(label, callback_data=f"admin_review_item|{sub['task_id']}|{sub['user_id']}"))
+
+    bot.send_message(chat_id, "Select submission to review:", reply_markup=markup)
+    if isinstance(source, CallbackQuery):
+        bot.answer_callback_query(source.id)
+
+
+def handle_admin_review_item(bot, call: CallbackQuery) -> None:
+    parsed = _parse_review_callback(call.data)
+    if not parsed:
+        bot.answer_callback_query(call.id, "Invalid review item")
+        return
+
+    task_id, user_id = parsed
+    submission = db.get_submission(task_id, user_id)
+    task = db.get_task(task_id)
+    user = db.get_user(user_id)
+    if not submission or not task or not user:
+        bot.answer_callback_query(call.id, "Submission not found")
+        return
+
+    text = (
+        f"Submission Review\n"
+        f"Intern: {short_name(user)}\n"
+        f"Task: {task.get('title', '')}\n"
+        f"Work URL: {submission.get('work_url', 'N/A')}\n"
+        f"Live Demo: {submission.get('demo_url') or 'N/A'}\n"
+        f"Learned: {submission.get('learned', '')}\n"
+        f"Importance (/10): {submission.get('importance_rating', 'N/A')}\n"
+        f"Current Status: {submission.get('status', '')}"
+    )
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Mark On Review", callback_data=f"admin_mark_review|{task_id}|{user_id}"))
+    markup.add(InlineKeyboardButton("Mark Done + Score", callback_data=f"admin_mark_done|{task_id}|{user_id}"))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)
 
-def handle_admin_review_on(bot, call: CallbackQuery):
-    from bson import ObjectId
-    sub_id = call.data.replace('admin_review_on_', '')
-    db.submissions.update_one({'_id': ObjectId(sub_id)}, {'$set': {'status': config.TASK_STATUS_ON_REVIEW}})
-    bot.edit_message_text("Submission marked as 'On Review'.", call.message.chat.id, call.message.message_id)
 
-def handle_admin_review_done(bot, call: CallbackQuery):
-    state = registration_state.setdefault(call.from_user.id, {})
-    state['step'] = 'admin_score_input'
-    state['score_sub_id'] = call.data.replace('admin_review_done_', '')
-    bot.send_message(call.message.chat.id, f"Enter score for this submission (0-{config.MAX_SCORE}):")
-
-def handle_admin_score_input(bot, message: Message):
-    state = registration_state.get(message.from_user.id)
-    if not state or state.get('step') != 'admin_score_input':
+def handle_admin_mark_review(bot, call: CallbackQuery) -> None:
+    parsed = _parse_review_callback(call.data)
+    if not parsed:
+        bot.answer_callback_query(call.id, "Invalid request")
         return
+
+    task_id, user_id = parsed
+    db.update_submission(task_id, user_id, {"status": config.TASK_STATUS_ON_REVIEW})
+    bot.edit_message_text("Submission moved to On Review.", call.message.chat.id, call.message.message_id)
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_mark_done(bot, call: CallbackQuery) -> None:
+    parsed = _parse_review_callback(call.data)
+    if not parsed:
+        bot.answer_callback_query(call.id, "Invalid request")
+        return
+
+    task_id, user_id = parsed
+    registration_state[call.from_user.id] = {
+        "step": "admin_score",
+        "target_task_id": task_id,
+        "target_user_id": user_id,
+    }
+    bot.send_message(call.message.chat.id, f"Enter score (0-{config.MAX_SCORE}) for this submission:")
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_score(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "admin_score":
+        return
+
     try:
         score = int(message.text.strip())
-        if not (0 <= score <= config.MAX_SCORE):
+        if score < 0 or score > config.MAX_SCORE:
             raise ValueError
-    except Exception:
-        bot.send_message(message.chat.id, f"Enter a valid score (0-{config.MAX_SCORE}):")
+    except ValueError:
+        bot.send_message(message.chat.id, f"Invalid score. Enter a number between 0 and {config.MAX_SCORE}:")
         return
-    state['score'] = score
-    state['step'] = 'admin_score_note'
-    bot.send_message(message.chat.id, "Enter a note for this submission (optional):")
 
-def handle_admin_score_note(bot, message: Message):
+    state["score"] = score
+    state["step"] = "admin_note"
+    bot.send_message(message.chat.id, "Add an optional review note (or type '-' to skip):")
+
+
+def handle_admin_note(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
-    if not state or state.get('step') != 'admin_score_note':
+    if not state or state.get("step") != "admin_note":
         return
+
     note = message.text.strip()
-    from bson import ObjectId
-    sub_id = state['score_sub_id']
-    submission = db.submissions.find_one({'_id': ObjectId(sub_id)})
-    if not submission:
-        bot.send_message(message.chat.id, "Submission not found.")
-        registration_state.pop(message.from_user.id, None)
-        return
-    db.submissions.update_one({'_id': ObjectId(sub_id)}, {'$set': {'status': config.TASK_STATUS_DONE, 'score': state['score'], 'note': note}})
-    db.increment_user_score(submission['user_id'], state['score'])
-    bot.send_message(message.chat.id, f"Submission marked as done. Score: {state['score']}")
-    # Notify user
-    try:
-        bot.send_message(submission['user_id'], f"Your submission for '{submission.get('task_id')}' was reviewed. Score: {state['score']}\nNote: {note}")
-    except Exception:
-        pass
+    if note == "-":
+        note = ""
+
+    task_id = state["target_task_id"]
+    user_id = state["target_user_id"]
+    score = state["score"]
+
+    db.update_submission(
+        task_id,
+        user_id,
+        {
+            "status": config.TASK_STATUS_DONE,
+            "review_score": score,
+            "review_note": note,
+            "reviewed_by": message.from_user.id,
+            "reviewed_at": db.utcnow(),
+        },
+    )
+    db.increment_user_score(user_id, score)
+
+    task = db.get_task(task_id)
+    title = task.get("title", "your task") if task else "your task"
+    notify_users(
+        bot,
+        [user_id],
+        f"Your submission for '{title}' is marked DONE. Score: {score}.\nNote: {note or 'No note'}",
+    )
+
+    bot.send_message(message.chat.id, "Submission marked done and intern notified.")
     registration_state.pop(message.from_user.id, None)
+
+
+# Leaderboard
+
+def handle_admin_leaderboard(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+
+    leaderboard = db.get_leaderboard(limit=20)
+    if not leaderboard:
+        bot.edit_message_text("Leaderboard is empty.", call.message.chat.id, call.message.message_id)
+        bot.answer_callback_query(call.id)
+        return
+
+    lines = ["Leaderboard"]
+    rank = 1
+    for user in leaderboard:
+        lines.append(f"{rank}. {short_name(user)} ({role_label(user.get('role', ''))}) - {user.get('score', 0)}")
+        rank += 1
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Back", callback_data="admin_panel"))
+    bot.edit_message_text("\n".join(lines), call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)

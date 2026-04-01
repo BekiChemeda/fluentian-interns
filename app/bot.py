@@ -1,229 +1,268 @@
 """
 bot.py
-Main entry point for the Telegram bot. Sets up Telebot, handlers, and polling.
+Telegram bot entrypoint and route wiring.
 """
+
 import telebot
-from telebot.types import Message, CallbackQuery
-from app import config
+from telebot.types import CallbackQuery, Message
 
+from app import config, db
 from app.handlers import (
-    handle_start, handle_email, handle_role_selection,
-    show_dashboard, handle_task_list,
-    handle_assign_task, handle_task_title, handle_task_desc,
-    handle_assign_choice, handle_assign_user, handle_update_task,
-    handle_admin_add_allowed, handle_admin_add_email, handle_admin_add_role,
-    handle_first_name, handle_last_name, handle_confirm_role,
-    handle_admin_dashboard, handle_admin_leaderboard,
-    handle_admin_assign_task, handle_admin_task_title, handle_admin_task_desc,
-    handle_admin_assign_type, handle_admin_task_role, handle_admin_task_deadline,
-    handle_admin_task_user_page, handle_admin_task_user_select, handle_admin_task_user_done,
-    handle_user_profile, handle_user_task_list, handle_user_task_detail,
-    handle_user_submit_task, handle_user_submit_link, handle_user_submit_file,
-    handle_user_submit_skipfiles, handle_user_submit_donefiles,
-    handle_admin_review_menu, handle_admin_review_detail, handle_admin_review_on, handle_admin_review_done,
-    handle_admin_score_input, handle_admin_score_note,
-    registration_state
+    handle_admin_add_email,
+    handle_admin_add_intern,
+    handle_admin_add_role,
+    handle_admin_assign_task,
+    handle_admin_assign_type,
+    handle_admin_leaderboard,
+    handle_admin_mark_done,
+    handle_admin_mark_review,
+    handle_admin_note,
+    handle_admin_panel,
+    handle_admin_pick_user,
+    handle_admin_review_item,
+    handle_admin_review_menu,
+    handle_admin_score,
+    handle_admin_task_deadline,
+    handle_admin_task_description,
+    handle_admin_task_role,
+    handle_admin_task_title,
+    handle_admin_user_page,
+    handle_admin_users_done,
+    handle_dashboard_callback,
+    handle_email,
+    handle_first_name,
+    handle_last_name,
+    handle_my_tasks,
+    handle_profile,
+    is_admin,
+    handle_start,
+    handle_submit_demo_url,
+    handle_submit_deployed_choice,
+    handle_submit_importance,
+    handle_submit_learned,
+    handle_submit_task,
+    handle_submit_work_url,
+    handle_task_detail,
+    handle_task_list,
+    registration_state,
+    show_dashboard,
 )
-# --- Admin review menu ---
-@bot.message_handler(commands=['review'])
-def admin_review_menu_cmd(message: Message):
-    handle_admin_review_menu(bot, message)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_') and not (call.data.startswith('admin_review_on_') or call.data.startswith('admin_review_done_')))
-def admin_review_detail_callback(call: CallbackQuery):
-    handle_admin_review_detail(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_on_'))
-def admin_review_on_callback(call: CallbackQuery):
-    handle_admin_review_on(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_review_done_'))
-def admin_review_done_callback(call: CallbackQuery):
-    handle_admin_review_done(bot, call)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_score_input')
-def admin_score_input_step(message: Message):
-    handle_admin_score_input(bot, message)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_score_note')
-def admin_score_note_step(message: Message):
-    handle_admin_score_note(bot, message)
-# --- User dashboard/profile ---
-@bot.callback_query_handler(func=lambda call: call.data == 'profile')
-def user_profile_callback(call: CallbackQuery):
-    handle_user_profile(bot, call)
-
-# --- User tasks (ongoing/completed) ---
-@bot.callback_query_handler(func=lambda call: call.data == 'tasks_ongoing')
-def user_ongoing_tasks_callback(call: CallbackQuery):
-    handle_user_task_list(bot, call, status='ONGOING')
-
-@bot.callback_query_handler(func=lambda call: call.data == 'tasks_completed')
-def user_completed_tasks_callback(call: CallbackQuery):
-    handle_user_task_list(bot, call, status='COMPLETED')
-
-# --- User task detail and submission ---
-@bot.callback_query_handler(func=lambda call: call.data.startswith('user_task_'))
-def user_task_detail_callback(call: CallbackQuery):
-    handle_user_task_detail(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('user_submit_'))
-def user_submit_task_callback(call: CallbackQuery):
-    handle_user_submit_task(bot, call)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'user_submit_link')
-def user_submit_link_step(message: Message):
-    handle_user_submit_link(bot, message)
-
-@bot.message_handler(content_types=['document', 'photo'])
-def user_submit_file_step(message: Message):
-    state = registration_state.get(message.from_user.id)
-    if state and state.get('step') == 'user_submit_files':
-        handle_user_submit_file(bot, message)
-
-@bot.callback_query_handler(func=lambda call: call.data == 'user_submit_skipfiles')
-def user_submit_skipfiles_callback(call: CallbackQuery):
-    handle_user_submit_skipfiles(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data == 'user_submit_donefiles')
-def user_submit_donefiles_callback(call: CallbackQuery):
-    handle_user_submit_donefiles(bot, call)
-# --- Admin assign task ---
-@bot.message_handler(commands=['assigntask'])
-def admin_assign_task_cmd(message: Message):
-    handle_admin_assign_task(bot, message)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_task_title')
-def admin_task_title_step(message: Message):
-    handle_admin_task_title(bot, message)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_task_desc')
-def admin_task_desc_step(message: Message):
-    handle_admin_task_desc(bot, message)
-
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_task_deadline')
-def admin_task_deadline_step(message: Message):
-    handle_admin_task_deadline(bot, message)
-
-@bot.callback_query_handler(func=lambda call: call.data == 'admin_assign_role' or call.data == 'admin_assign_users')
-def admin_assign_type_callback(call: CallbackQuery):
-    handle_admin_assign_type(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_task_role_'))
-def admin_task_role_callback(call: CallbackQuery):
-    handle_admin_task_role(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_task_userpage_'))
-def admin_task_user_page_callback(call: CallbackQuery):
-    handle_admin_task_user_page(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_task_user_'))
-def admin_task_user_select_callback(call: CallbackQuery):
-    handle_admin_task_user_select(bot, call)
-
-@bot.callback_query_handler(func=lambda call: call.data == 'admin_task_user_done')
-def admin_task_user_done_callback(call: CallbackQuery):
-    handle_admin_task_user_done(bot, call)
-# --- Admin dashboard ---
-@bot.message_handler(commands=['dashboard'])
-def admin_dashboard_cmd(message: Message):
-    handle_admin_dashboard(bot, message)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_leaderboard_'))
-def admin_leaderboard_callback(call: CallbackQuery):
-    handle_admin_leaderboard(bot, call)
 
 bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
+db.ensure_indexes()
 
-# --- Registration ---
-@bot.message_handler(commands=['start'])
+
+@bot.message_handler(commands=["start"])
 def start_cmd(message: Message):
     handle_start(bot, message)
 
 
-# Registration email step
+@bot.message_handler(commands=["dashboard"])
+def dashboard_cmd(message: Message):
+    show_dashboard(bot, message.from_user.id, message.chat.id)
 
-# Registration email step
-# Registration email step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'email')
-def email_step(message: Message):
+
+@bot.message_handler(commands=["assigntask"])
+def assigntask_cmd(message: Message):
+    handle_admin_assign_task(bot, message)
+
+
+@bot.message_handler(commands=["addintern"])
+def addintern_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        bot.send_message(message.chat.id, "Admin only")
+        return
+    registration_state[message.from_user.id] = {"step": "admin_add_email"}
+    bot.send_message(message.chat.id, "Enter intern email to allow:")
+
+
+@bot.message_handler(commands=["review"])
+def review_cmd(message: Message):
+    handle_admin_review_menu(bot, message)
+
+
+# Registration steps
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "email")
+def registration_email_step(message: Message):
     handle_email(bot, message)
 
-# Registration first name step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'first_name')
-def first_name_step(message: Message):
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "first_name")
+def registration_first_name_step(message: Message):
     handle_first_name(bot, message)
 
-# Registration last name step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'last_name')
-def last_name_step(message: Message):
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "last_name")
+def registration_last_name_step(message: Message):
     handle_last_name(bot, message)
 
-# Admin add allowed email step
 
-# Admin add allowed email step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'admin_add_email')
+# Submission steps
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_work_url")
+def submit_work_url_step(message: Message):
+    handle_submit_work_url(bot, message)
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_demo_url")
+def submit_demo_url_step(message: Message):
+    handle_submit_demo_url(bot, message)
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_learned")
+def submit_learned_step(message: Message):
+    handle_submit_learned(bot, message)
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_importance")
+def submit_importance_step(message: Message):
+    handle_submit_importance(bot, message)
+
+
+# Admin add intern step
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_add_email")
 def admin_add_email_step(message: Message):
     handle_admin_add_email(bot, message)
 
 
-# Task title step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'task_title')
-def task_title_step(message: Message):
-    handle_task_title(bot, message)
+# Admin assign task steps
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_title")
+def admin_task_title_step(message: Message):
+    handle_admin_task_title(bot, message)
 
 
-# Task description step
-@bot.message_handler(func=lambda m: m.from_user.id in registration_state and registration_state[m.from_user.id].get('step') == 'task_desc')
-def task_desc_step(message: Message):
-    handle_task_desc(bot, message)
-
-# --- Admin assign task ---
-@bot.message_handler(commands=['assign'])
-def assign_cmd(message: Message):
-    handle_assign_task(bot, message)
-
-@bot.message_handler(commands=['update'])
-def update_cmd(message: Message):
-    handle_update_task(bot, message)
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_description")
+def admin_task_description_step(message: Message):
+    handle_admin_task_description(bot, message)
 
 
-# Registration confirm role step
-@bot.callback_query_handler(func=lambda call: call.data in ['confirm_role_yes', 'confirm_role_no'])
-def confirm_role_callback(call: CallbackQuery):
-    handle_confirm_role(bot, call)
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_deadline")
+def admin_task_deadline_step(message: Message):
+    handle_admin_task_deadline(bot, message)
 
-# --- Callback queries ---
 
-# Registration role selection
-@bot.callback_query_handler(func=lambda call: call.data.startswith('role_'))
-def role_callback(call: CallbackQuery):
-    handle_role_selection(bot, call)
+# Admin review scoring steps
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_score")
+def admin_score_step(message: Message):
+    handle_admin_score(bot, message)
 
-# Admin add allowed button
-@bot.callback_query_handler(func=lambda call: call.data == 'admin_add_allowed')
-def admin_add_allowed_callback(call: CallbackQuery):
-    handle_admin_add_allowed(bot, call)
 
-# Admin add allowed role selection
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_role_'))
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_note")
+def admin_note_step(message: Message):
+    handle_admin_note(bot, message)
+
+
+# Dashboard callbacks
+@bot.callback_query_handler(func=lambda call: call.data == "go_dashboard")
+def dashboard_callback(call: CallbackQuery):
+    handle_dashboard_callback(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile")
+def profile_callback(call: CallbackQuery):
+    handle_profile(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "my_tasks")
+def my_tasks_callback(call: CallbackQuery):
+    handle_my_tasks(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "tasks_ongoing")
+def tasks_ongoing_callback(call: CallbackQuery):
+    handle_task_list(bot, call, "ONGOING")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "tasks_completed")
+def tasks_completed_callback(call: CallbackQuery):
+    handle_task_list(bot, call, "COMPLETED")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("task|"))
+def task_detail_callback(call: CallbackQuery):
+    handle_task_detail(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("submit|"))
+def submit_task_callback(call: CallbackQuery):
+    handle_submit_task(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data in {"submit_deployed_yes", "submit_deployed_no"})
+def submit_deployed_callback(call: CallbackQuery):
+    handle_submit_deployed_choice(bot, call)
+
+
+# Admin panel callbacks
+@bot.callback_query_handler(func=lambda call: call.data == "admin_panel")
+def admin_panel_callback(call: CallbackQuery):
+    handle_admin_panel(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_intern")
+def admin_add_intern_callback(call: CallbackQuery):
+    handle_admin_add_intern(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_add_role|"))
 def admin_add_role_callback(call: CallbackQuery):
     handle_admin_add_role(bot, call)
 
-@bot.callback_query_handler(func=lambda call: call.data in ['tasks_ongoing', 'tasks_completed'])
-def dashboard_tasks_callback(call: CallbackQuery):
-    status = 'ONGOING' if call.data == 'tasks_ongoing' else 'COMPLETED'
-    handle_task_list(bot, call, status)
 
-@bot.callback_query_handler(func=lambda call: call.data in ['assign_user', 'assign_role'])
-def assign_choice_callback(call: CallbackQuery):
-    handle_assign_choice(bot, call)
+@bot.callback_query_handler(func=lambda call: call.data == "admin_assign_task")
+def admin_assign_task_callback(call: CallbackQuery):
+    handle_admin_assign_task(bot, call)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('assign_uid_') or call.data.startswith('assign_role_'))
-def assign_user_role_callback(call: CallbackQuery):
-    handle_assign_user(bot, call)
 
-# --- Main ---
-if __name__ == '__main__':
-    print('Bot is running...')
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_assign_type|"))
+def admin_assign_type_callback(call: CallbackQuery):
+    handle_admin_assign_type(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_task_role|"))
+def admin_task_role_callback(call: CallbackQuery):
+    handle_admin_task_role(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_user_page|"))
+def admin_user_page_callback(call: CallbackQuery):
+    handle_admin_user_page(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_pick_user|"))
+def admin_pick_user_callback(call: CallbackQuery):
+    handle_admin_pick_user(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_users_done")
+def admin_users_done_callback(call: CallbackQuery):
+    handle_admin_users_done(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_review_menu")
+def admin_review_menu_callback(call: CallbackQuery):
+    handle_admin_review_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_review_item|"))
+def admin_review_item_callback(call: CallbackQuery):
+    handle_admin_review_item(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_mark_review|"))
+def admin_mark_review_callback(call: CallbackQuery):
+    handle_admin_mark_review(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_mark_done|"))
+def admin_mark_done_callback(call: CallbackQuery):
+    handle_admin_mark_done(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_leaderboard")
+def admin_leaderboard_callback(call: CallbackQuery):
+    handle_admin_leaderboard(bot, call)
+
+
+if __name__ == "__main__":
+    print("Bot is running...")
     bot.infinity_polling()

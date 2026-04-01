@@ -9,6 +9,7 @@ idna==3.11
 multidict==6.7.1
 propcache==0.4.1
 pytelegrambotapi==4.32.0
+pymongo==4.16.0
 python-dotenv==1.2.2
 requests==2.33.0
 typing-extensions==4.15.0
