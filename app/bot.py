@@ -32,11 +32,15 @@ from app.handlers import (
     handle_admin_mark_review,
     handle_admin_add_submission_note_input,
     handle_admin_add_submission_note_start,
+    handle_admin_category,
     handle_admin_note,
     handle_admin_panel,
+    handle_admin_profile_edit_controls,
     handle_admin_pick_user,
     handle_admin_remove_user,
     handle_admin_reply_command,
+    handle_contact_reply_input,
+    handle_contact_reply_start,
     handle_admin_role_add_name,
     handle_admin_role_add_start,
     handle_admin_role_remove,
@@ -44,10 +48,12 @@ from app.handlers import (
     handle_admin_manage_roles,
     handle_admin_review_item,
     handle_admin_review_menu,
+    handle_admin_review_page,
     handle_admin_score,
     handle_admin_send_submission_files,
     handle_admin_set_channel_input,
     handle_admin_set_role,
+    handle_admin_threads_menu,
     handle_admin_export_leaderboard,
     handle_admin_export_menu,
     handle_admin_export_reminders,
@@ -56,6 +62,8 @@ from app.handlers import (
     handle_admin_restore_users,
     handle_admin_score_visibility_menu,
     handle_admin_score_visibility_toggle,
+    handle_admin_stats_overview,
+    handle_admin_toggle_profile_edit_control,
     handle_admin_task_attach_choice,
     handle_admin_task_attachment_action,
     handle_admin_task_attachment_file,
@@ -84,6 +92,26 @@ from app.handlers import (
     handle_notif_settings,
     handle_notif_toggle,
     handle_profile,
+    handle_profile_edit_menu,
+    handle_profile_edit_name_or_email_input,
+    handle_profile_edit_name_or_email_start,
+    handle_profile_edit_city_input,
+    handle_profile_finish,
+    handle_profile_pick_city,
+    handle_profile_pick_city_page,
+    handle_profile_pick_country,
+    handle_profile_pick_country_page,
+    handle_profile_pick_gender,
+    handle_profile_pick_language,
+    handle_profile_pick_language_level,
+    handle_profile_pick_nationality,
+    handle_profile_pick_nationality_page,
+    handle_profile_set_city,
+    handle_profile_set_country,
+    handle_profile_set_gender,
+    handle_profile_set_language,
+    handle_profile_set_language_level,
+    handle_profile_set_nationality,
     handle_start,
     handle_submit_custom_choice,
     handle_submit_custom_name,
@@ -342,6 +370,31 @@ def thread_message_step(message: Message):
     handle_thread_message_input(bot, message)
 
 
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "contact_reply")
+def contact_reply_step(message: Message):
+    handle_contact_reply_input(bot, message)
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_first_name")
+def profile_edit_first_name_step(message: Message):
+    handle_profile_edit_name_or_email_input(bot, message, "first_name")
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_last_name")
+def profile_edit_last_name_step(message: Message):
+    handle_profile_edit_name_or_email_input(bot, message, "last_name")
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_email")
+def profile_edit_email_step(message: Message):
+    handle_profile_edit_name_or_email_input(bot, message, "email")
+
+
+@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_current_city")
+def profile_edit_current_city_step(message: Message):
+    handle_profile_edit_city_input(bot, message)
+
+
 @bot.message_handler(content_types=["document", "photo"])
 def any_file_step(message: Message):
     state = registration_state.get(message.from_user.id, {}).get("step")
@@ -369,13 +422,125 @@ def start_register_callback(call: CallbackQuery):
 
 @bot.callback_query_handler(func=lambda call: call.data == "help_contact_admin")
 def help_contact_admin_callback(call: CallbackQuery):
-    bot.send_message(call.message.chat.id, "Use /admin your message to contact admin.")
+    try:
+        bot.edit_message_text(
+            "Use /admin your message to contact admin.",
+            call.message.chat.id,
+            call.message.message_id,
+        )
+    except Exception:
+        bot.send_message(call.message.chat.id, "Use /admin your message to contact admin.")
     bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("contact_reply|"))
+def contact_reply_callback(call: CallbackQuery):
+    handle_contact_reply_start(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "profile")
 def profile_callback(call: CallbackQuery):
     handle_profile(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_edit_menu")
+def profile_edit_menu_callback(call: CallbackQuery):
+    handle_profile_edit_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_pick_gender")
+def profile_pick_gender_callback(call: CallbackQuery):
+    handle_profile_pick_gender(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_pick_nationality|"))
+def profile_pick_nationality_callback(call: CallbackQuery):
+    handle_profile_pick_nationality(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_nationality_page|"))
+def profile_pick_nationality_page_callback(call: CallbackQuery):
+    handle_profile_pick_nationality_page(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_pick_country|"))
+def profile_pick_country_callback(call: CallbackQuery):
+    handle_profile_pick_country(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_country_page|"))
+def profile_pick_country_page_callback(call: CallbackQuery):
+    handle_profile_pick_country_page(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_pick_city")
+def profile_pick_city_callback(call: CallbackQuery):
+    handle_profile_pick_city(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_city_page|"))
+def profile_pick_city_page_callback(call: CallbackQuery):
+    handle_profile_pick_city_page(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_pick_language")
+def profile_pick_language_callback(call: CallbackQuery):
+    handle_profile_pick_language(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_pick_language_level")
+def profile_pick_language_level_callback(call: CallbackQuery):
+    handle_profile_pick_language_level(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_gender|"))
+def profile_set_gender_callback(call: CallbackQuery):
+    handle_profile_set_gender(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_nationality|"))
+def profile_set_nationality_callback(call: CallbackQuery):
+    handle_profile_set_nationality(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_country|"))
+def profile_set_country_callback(call: CallbackQuery):
+    handle_profile_set_country(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_city|"))
+def profile_set_city_callback(call: CallbackQuery):
+    handle_profile_set_city(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_language|"))
+def profile_set_language_callback(call: CallbackQuery):
+    handle_profile_set_language(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_language_level|"))
+def profile_set_language_level_callback(call: CallbackQuery):
+    handle_profile_set_language_level(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_finish")
+def profile_finish_callback(call: CallbackQuery):
+    handle_profile_finish(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_edit_first_name")
+def profile_edit_first_name_callback(call: CallbackQuery):
+    handle_profile_edit_name_or_email_start(bot, call, "first_name")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_edit_last_name")
+def profile_edit_last_name_callback(call: CallbackQuery):
+    handle_profile_edit_name_or_email_start(bot, call, "last_name")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_edit_email")
+def profile_edit_email_callback(call: CallbackQuery):
+    handle_profile_edit_name_or_email_start(bot, call, "email")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "notif_settings")
@@ -473,6 +638,46 @@ def admin_panel_callback(call: CallbackQuery):
     handle_admin_panel(bot, call)
 
 
+@bot.callback_query_handler(func=lambda call: call.data == "admin_cat_tasks")
+def admin_cat_tasks_callback(call: CallbackQuery):
+    handle_admin_category(bot, call, "tasks")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_cat_users")
+def admin_cat_users_callback(call: CallbackQuery):
+    handle_admin_category(bot, call, "users")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_cat_settings")
+def admin_cat_settings_callback(call: CallbackQuery):
+    handle_admin_category(bot, call, "settings")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_cat_reports")
+def admin_cat_reports_callback(call: CallbackQuery):
+    handle_admin_category(bot, call, "reports")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_stats_overview")
+def admin_stats_overview_callback(call: CallbackQuery):
+    handle_admin_stats_overview(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_profile_edit_controls")
+def admin_profile_edit_controls_callback(call: CallbackQuery):
+    handle_admin_profile_edit_controls(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_toggle_name_edit")
+def admin_toggle_name_edit_callback(call: CallbackQuery):
+    handle_admin_toggle_profile_edit_control(bot, call, "allow_profile_name_edit")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_toggle_email_edit")
+def admin_toggle_email_edit_callback(call: CallbackQuery):
+    handle_admin_toggle_profile_edit_control(bot, call, "allow_profile_email_edit")
+
+
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_intern")
 def admin_add_intern_callback(call: CallbackQuery):
     handle_admin_add_intern(bot, call)
@@ -528,6 +733,11 @@ def admin_review_menu_callback(call: CallbackQuery):
     handle_admin_review_menu(bot, call)
 
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_review_page|"))
+def admin_review_page_callback(call: CallbackQuery):
+    handle_admin_review_page(bot, call)
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_review_item|"))
 def admin_review_item_callback(call: CallbackQuery):
     handle_admin_review_item(bot, call)
@@ -556,6 +766,11 @@ def admin_add_sub_note_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
 def admin_broadcast_callback(call: CallbackQuery):
     handle_admin_broadcast_start(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_threads_menu")
+def admin_threads_menu_callback(call: CallbackQuery):
+    handle_admin_threads_menu(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_manage_users")
