@@ -43,4 +43,4 @@ LANGUAGE_LEVEL_OPTIONS = [
     "Native",
 ]
 
-GENDER_OPTIONS = ["Male", "Female", "Non-binary", "Prefer not to say"]
+GENDER_OPTIONS = ["Male", "Female"]
