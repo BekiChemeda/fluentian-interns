@@ -20,7 +20,16 @@ from app.handlers import (
     handle_admin_assign_task,
     handle_admin_assign_type,
     handle_admin_ban_toggle,
+    handle_admin_broadcast_continue,
+    handle_admin_broadcast_country_exact_prompt,
+    handle_admin_broadcast_country_input,
+    handle_admin_broadcast_country_mode,
+    handle_admin_broadcast_filter_menu,
+    handle_admin_broadcast_gender,
     handle_admin_broadcast_message,
+    handle_admin_broadcast_profile,
+    handle_admin_broadcast_role_toggle,
+    handle_admin_broadcast_roles_clear,
     handle_admin_broadcast_start,
     handle_admin_change_role,
     handle_admin_force_set_channel,
@@ -247,11 +256,7 @@ def review_cmd(message: Message):
 
 @bot.message_handler(commands=["broadcast"])
 def broadcast_cmd(message: Message):
-    if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "Admin only")
-        return
-    registration_state[message.from_user.id] = {"step": "admin_broadcast"}
-    bot.send_message(message.chat.id, "Send broadcast message:")
+    handle_admin_broadcast_start(bot, message)
 
 
 # state messages
@@ -418,6 +423,14 @@ def admin_sub_note_step(message: Message):
 )
 def admin_broadcast_step(message: Message):
     handle_admin_broadcast_message(bot, message)
+
+
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_broadcast_country_input"
+)
+def admin_broadcast_country_input_step(message: Message):
+    handle_admin_broadcast_country_input(bot, message)
 
 
 @bot.message_handler(
@@ -913,6 +926,60 @@ def admin_add_sub_note_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
 def admin_broadcast_callback(call: CallbackQuery):
     handle_admin_broadcast_start(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data == "admin_broadcast_filter_menu"
+)
+def admin_broadcast_filter_menu_callback(call: CallbackQuery):
+    handle_admin_broadcast_filter_menu(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_broadcast_role_toggle|")
+)
+def admin_broadcast_role_toggle_callback(call: CallbackQuery):
+    handle_admin_broadcast_role_toggle(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data == "admin_broadcast_roles_clear"
+)
+def admin_broadcast_roles_clear_callback(call: CallbackQuery):
+    handle_admin_broadcast_roles_clear(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_broadcast_gender|")
+)
+def admin_broadcast_gender_callback(call: CallbackQuery):
+    handle_admin_broadcast_gender(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_broadcast_profile|")
+)
+def admin_broadcast_profile_callback(call: CallbackQuery):
+    handle_admin_broadcast_profile(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_broadcast_country_mode|")
+)
+def admin_broadcast_country_mode_callback(call: CallbackQuery):
+    handle_admin_broadcast_country_mode(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data == "admin_broadcast_country_exact_prompt"
+)
+def admin_broadcast_country_exact_prompt_callback(call: CallbackQuery):
+    handle_admin_broadcast_country_exact_prompt(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast_continue")
+def admin_broadcast_continue_callback(call: CallbackQuery):
+    handle_admin_broadcast_continue(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_threads_menu")

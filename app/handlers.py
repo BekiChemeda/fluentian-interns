@@ -2758,16 +2758,400 @@ def handle_admin_toggle_profile_edit_control(
     handle_admin_profile_edit_controls(bot, call)
 
 
-def handle_admin_broadcast_start(bot, call: CallbackQuery) -> None:
-    if not is_admin(call.from_user.id):
-        bot.answer_callback_query(call.id, "Admin only")
+def handle_admin_broadcast_start(bot, source) -> None:
+    user_id = source.from_user.id
+    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    edit_message = source.message if isinstance(source, CallbackQuery) else None
+
+    if not is_admin(user_id):
+        if isinstance(source, CallbackQuery):
+            bot.answer_callback_query(source.id, "Admin only")
+        else:
+            bot.send_message(chat_id, "Admin only")
         return
-    registration_state[call.from_user.id] = {"step": "admin_broadcast"}
+
+    registration_state[user_id] = {
+        "step": "admin_broadcast_filter",
+        "broadcast_filter": {
+            "roles": [],
+            "gender": "all",
+            "profile": "all",
+            "country_mode": "all",
+            "country_value": "",
+        },
+    }
+    _show_admin_broadcast_filter_menu(
+        bot,
+        user_id=user_id,
+        chat_id=chat_id,
+        edit_message=edit_message,
+    )
+    if isinstance(source, CallbackQuery):
+        bot.answer_callback_query(source.id)
+
+
+def _normalize(v: str) -> str:
+    return (v or "").strip().lower()
+
+
+def _broadcast_matches_user(user: Dict, filters: Dict) -> bool:
+    selected_roles = filters.get("roles", [])
+    if selected_roles and user.get("role") not in selected_roles:
+        return False
+
+    gender_filter = filters.get("gender", "all")
+    user_gender = _normalize(user.get("gender", ""))
+    if gender_filter == "not_set" and user_gender:
+        return False
+    if gender_filter not in {"all", "not_set"} and user_gender != gender_filter:
+        return False
+
+    profile_filter = filters.get("profile", "all")
+    complete = is_profile_complete(user)
+    if profile_filter == "complete" and not complete:
+        return False
+    if profile_filter == "incomplete" and complete:
+        return False
+
+    country_mode = filters.get("country_mode", "all")
+    user_country = _normalize(user.get("current_country", ""))
+    if country_mode == "set" and not user_country:
+        return False
+    if country_mode == "unset" and user_country:
+        return False
+    if country_mode == "exact":
+        target = _normalize(filters.get("country_value", ""))
+        if not target or user_country != target:
+            return False
+
+    return True
+
+
+def _broadcast_filter_summary(filters: Dict) -> str:
+    roles = filters.get("roles", [])
+    roles_label = "All" if not roles else ", ".join(role_label(r) for r in roles)
+
+    gender_raw = filters.get("gender", "all")
+    if gender_raw == "all":
+        gender_label = "All"
+    elif gender_raw == "not_set":
+        gender_label = "Not set"
+    else:
+        gender_label = gender_raw.title()
+
+    profile_raw = filters.get("profile", "all")
+    profile_map = {
+        "all": "All",
+        "complete": "Completed profiles only",
+        "incomplete": "Incomplete profiles only",
+    }
+    profile_label = profile_map.get(profile_raw, "All")
+
+    country_mode = filters.get("country_mode", "all")
+    if country_mode == "all":
+        country_label = "All"
+    elif country_mode == "set":
+        country_label = "Country is set"
+    elif country_mode == "unset":
+        country_label = "Country is not set"
+    else:
+        country_label = (
+            filters.get("country_value", "").strip() or "Exact country (not set)"
+        )
+
+    return (
+        f"Roles: {roles_label}\n"
+        f"Gender: {gender_label}\n"
+        f"Profile: {profile_label}\n"
+        f"Country: {country_label}"
+    )
+
+
+def _show_admin_broadcast_filter_menu(
+    bot,
+    user_id: int,
+    chat_id: int,
+    edit_message: Optional[Message] = None,
+) -> None:
+    state = registration_state.get(user_id)
+    if not state:
+        return
+    filters = state.setdefault(
+        "broadcast_filter",
+        {
+            "roles": [],
+            "gender": "all",
+            "profile": "all",
+            "country_mode": "all",
+            "country_value": "",
+        },
+    )
+
+    users = db.list_users(include_banned=False)
+    matched = sum(1 for u in users if _broadcast_matches_user(u, filters))
+
+    text = (
+        "📣 Broadcast Audience Filters\n"
+        f"Matched users: {matched}\n\n"
+        f"{_broadcast_filter_summary(filters)}\n\n"
+        "Toggle options, then continue."
+    )
+
+    selected_roles = set(filters.get("roles", []))
+    markup = InlineKeyboardMarkup()
+
+    markup.add(
+        InlineKeyboardButton(
+            "Roles (multi-select)", callback_data="admin_broadcast_filter_menu"
+        )
+    )
+    for role in get_active_roles(include_admin=False):
+        mark = "✅" if role in selected_roles else "⬜"
+        markup.add(
+            InlineKeyboardButton(
+                f"{mark} {role_label(role)}",
+                callback_data=f"admin_broadcast_role_toggle|{role}",
+            )
+        )
+    markup.add(
+        InlineKeyboardButton("Clear Roles", callback_data="admin_broadcast_roles_clear")
+    )
+
+    markup.add(
+        InlineKeyboardButton("Gender: All", callback_data="admin_broadcast_gender|all")
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Gender: Not set", callback_data="admin_broadcast_gender|not_set"
+        )
+    )
+    for g in GENDER_OPTIONS:
+        markup.add(
+            InlineKeyboardButton(
+                f"Gender: {g}", callback_data=f"admin_broadcast_gender|{_normalize(g)}"
+            )
+        )
+
+    markup.add(
+        InlineKeyboardButton(
+            "Profile: All", callback_data="admin_broadcast_profile|all"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Profile: Completed", callback_data="admin_broadcast_profile|complete"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Profile: Incomplete", callback_data="admin_broadcast_profile|incomplete"
+        )
+    )
+
+    markup.add(
+        InlineKeyboardButton(
+            "Country: All", callback_data="admin_broadcast_country_mode|all"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Country: Set", callback_data="admin_broadcast_country_mode|set"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Country: Not set", callback_data="admin_broadcast_country_mode|unset"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Country: Exact (type)",
+            callback_data="admin_broadcast_country_exact_prompt",
+        )
+    )
+
+    markup.add(
+        InlineKeyboardButton(
+            "Continue To Message", callback_data="admin_broadcast_continue"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+
+    edit_or_send_message(
+        bot, chat_id, text, reply_markup=markup, edit_message=edit_message
+    )
+
+
+def handle_admin_broadcast_filter_menu(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") not in {
+        "admin_broadcast_filter",
+        "admin_broadcast_country_input",
+    }:
+        bot.answer_callback_query(call.id)
+        return
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_role_toggle(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state or state.get("step") not in {
+        "admin_broadcast_filter",
+        "admin_broadcast_country_input",
+    }:
+        bot.answer_callback_query(call.id)
+        return
+    parts = call.data.split("|", 1)
+    if len(parts) != 2:
+        bot.answer_callback_query(call.id)
+        return
+    role = parts[1]
+    if role not in get_active_roles(include_admin=False):
+        bot.answer_callback_query(call.id, "Invalid role")
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    roles = set(filters.get("roles", []))
+    if role in roles:
+        roles.remove(role)
+    else:
+        roles.add(role)
+    filters["roles"] = sorted(roles)
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_roles_clear(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    filters["roles"] = []
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id, "Roles cleared")
+
+
+def handle_admin_broadcast_gender(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    parts = call.data.split("|", 1)
+    if len(parts) != 2:
+        bot.answer_callback_query(call.id)
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    filters["gender"] = parts[1]
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_profile(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    parts = call.data.split("|", 1)
+    if len(parts) != 2:
+        bot.answer_callback_query(call.id)
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    filters["profile"] = parts[1]
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_country_mode(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    parts = call.data.split("|", 1)
+    if len(parts) != 2:
+        bot.answer_callback_query(call.id)
+        return
+    mode = parts[1]
+    if mode not in {"all", "set", "unset"}:
+        bot.answer_callback_query(call.id)
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    filters["country_mode"] = mode
+    if mode != "exact":
+        filters["country_value"] = ""
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_country_exact_prompt(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    state["step"] = "admin_broadcast_country_input"
     edit_or_send_message(
         bot,
         call.message.chat.id,
-        "Send broadcast message text (example: Daily standup starts in 30 minutes):",
-        reply_markup=navigation_markup(back="admin_panel"),
+        "Type exact country name to filter by (example: Kenya).",
+        reply_markup=navigation_markup(back="admin_broadcast_filter_menu"),
+        edit_message=call.message,
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_broadcast_country_input(bot, message: Message) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != "admin_broadcast_country_input":
+        return
+    country = (message.text or "").strip()
+    if not country:
+        bot.send_message(message.chat.id, "Country cannot be empty.")
+        return
+    filters = state.setdefault("broadcast_filter", {})
+    filters["country_mode"] = "exact"
+    filters["country_value"] = country
+    state["step"] = "admin_broadcast_filter"
+    _show_admin_broadcast_filter_menu(bot, message.from_user.id, message.chat.id)
+
+
+def handle_admin_broadcast_continue(bot, call: CallbackQuery) -> None:
+    state = registration_state.get(call.from_user.id)
+    if not state:
+        bot.answer_callback_query(call.id)
+        return
+    state["step"] = "admin_broadcast"
+    filters = state.get("broadcast_filter", {})
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        (
+            "Send broadcast message text (example: Daily standup starts in 30 minutes):\n\n"
+            "Current audience filter:\n"
+            f"{_broadcast_filter_summary(filters)}"
+        ),
+        reply_markup=navigation_markup(back="admin_broadcast_filter_menu"),
         edit_message=call.message,
     )
     bot.answer_callback_query(call.id)
@@ -2781,16 +3165,34 @@ def handle_admin_broadcast_message(bot, message: Message) -> None:
     if not text:
         bot.send_message(message.chat.id, "Message cannot be empty.")
         return
+    filters = state.get(
+        "broadcast_filter",
+        {
+            "roles": [],
+            "gender": "all",
+            "profile": "all",
+            "country_mode": "all",
+            "country_value": "",
+        },
+    )
     users = db.list_users(include_banned=False)
+    target_users = [u for u in users if _broadcast_matches_user(u, filters)]
     success = 0
-    for u in users:
+    for u in target_users:
         try:
             bot.send_message(u["telegram_id"], f"📣 Broadcast\n\n{text}")
             success += 1
         except Exception:
             continue
     clear_state(message.from_user.id)
-    bot.send_message(message.chat.id, f"✅ Broadcast sent to {success} users.")
+    bot.send_message(
+        message.chat.id,
+        (
+            f"✅ Broadcast sent to {success} users.\n"
+            f"Matched audience: {len(target_users)}\n"
+            f"Filter used:\n{_broadcast_filter_summary(filters)}"
+        ),
+    )
 
 
 def handle_admin_manage_users(bot, call: CallbackQuery) -> None:
