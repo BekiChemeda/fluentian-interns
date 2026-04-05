@@ -61,16 +61,41 @@ def short_name(user: Dict) -> str:
     return full or user.get("email", "Unknown")
 
 
+def _get_user_languages(user: Dict) -> List[str]:
+    raw_list = user.get("country_languages")
+    if isinstance(raw_list, list):
+        clean = [str(v).strip() for v in raw_list if str(v).strip()]
+        if clean:
+            return clean
+    raw_single = str(user.get("country_language", "")).strip()
+    if not raw_single:
+        return []
+    if "," in raw_single:
+        return [p.strip() for p in raw_single.split(",") if p.strip()]
+    return [raw_single]
+
+
+def _has_profile_value(user: Dict, key: str) -> bool:
+    if key == "country_language":
+        return len(_get_user_languages(user)) > 0
+    return bool(str(user.get(key, "")).strip())
+
+
+def _languages_text(user: Dict) -> str:
+    langs = _get_user_languages(user)
+    return ", ".join(langs) if langs else "Not set"
+
+
 def profile_completion_percent(user: Dict) -> int:
     filled = 0
     for key in REQUIRED_PROFILE_FIELDS:
-        if str(user.get(key, "")).strip():
+        if _has_profile_value(user, key):
             filled += 1
     return int((filled / len(REQUIRED_PROFILE_FIELDS)) * 100)
 
 
 def is_profile_complete(user: Dict) -> bool:
-    return all(str(user.get(k, "")).strip() for k in REQUIRED_PROFILE_FIELDS)
+    return all(_has_profile_value(user, k) for k in REQUIRED_PROFILE_FIELDS)
 
 
 def missing_profile_fields(user: Dict) -> List[str]:
@@ -83,7 +108,7 @@ def missing_profile_fields(user: Dict) -> List[str]:
         "language_level": "Language Level",
     }
     return [
-        labels[k] for k in REQUIRED_PROFILE_FIELDS if not str(user.get(k, "")).strip()
+        labels[k] for k in REQUIRED_PROFILE_FIELDS if not _has_profile_value(user, k)
     ]
 
 
@@ -607,6 +632,7 @@ def handle_registration_approval(bot, call: CallbackQuery, approve: bool) -> Non
             "current_city": "",
             "current_country": "",
             "country_language": "",
+            "country_languages": [],
             "language_level": "",
             "state": config.USER_STATE_ACTIVE,
             "score": 0,
@@ -717,6 +743,7 @@ def handle_last_name(bot, message: Message) -> None:
         "current_city": "",
         "current_country": "",
         "country_language": "",
+        "country_languages": [],
         "language_level": "",
         "state": config.USER_STATE_ACTIVE,
         "score": 0,
@@ -778,7 +805,7 @@ def handle_profile(bot, call: CallbackQuery) -> None:
         f"Nationality: {user.get('nationality') or 'Not set'}\n"
         f"Current Country: {user.get('current_country') or 'Not set'}\n"
         f"Current City: {user.get('current_city') or 'Not set'}\n"
-        f"Language: {user.get('country_language') or 'Not set'}\n"
+        f"Languages: {_languages_text(user)}\n"
         f"Language Level: {user.get('language_level') or 'Not set'}\n"
         f"Profile Completion: {profile_completion_percent(user)}%"
     )
@@ -929,17 +956,23 @@ def handle_profile_pick_city_page(bot, call: CallbackQuery) -> None:
 
 
 def handle_profile_pick_language(bot, call: CallbackQuery) -> None:
+    user = db.get_user(call.from_user.id) or {}
+    selected = set(_get_user_languages(user))
     markup = InlineKeyboardMarkup()
     for i, lang in enumerate(LANGUAGE_OPTIONS):
+        mark = "✅" if lang in selected else "⬜"
         markup.add(
-            InlineKeyboardButton(lang, callback_data=f"profile_set_language|{i}")
+            InlineKeyboardButton(
+                f"{mark} {lang}", callback_data=f"profile_set_language|{i}"
+            )
         )
+    markup.add(InlineKeyboardButton("Done", callback_data="profile_edit_menu"))
     markup.row(
         InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
         InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
     )
     bot.edit_message_text(
-        "Select language:",
+        "Select one or more languages:",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=markup,
@@ -1003,11 +1036,21 @@ def handle_profile_set_language(bot, call: CallbackQuery) -> None:
     _, raw_idx = call.data.split("|", 1)
     idx = int(raw_idx)
     if 0 <= idx < len(LANGUAGE_OPTIONS):
+        user = db.get_user(call.from_user.id) or {}
+        languages = _get_user_languages(user)
+        selected = LANGUAGE_OPTIONS[idx]
+        if selected in languages:
+            languages = [lang_item for lang_item in languages if lang_item != selected]
+        else:
+            languages.append(selected)
         db.update_user(
             call.from_user.id,
-            {"country_language": LANGUAGE_OPTIONS[idx], "language_level": ""},
+            {
+                "country_languages": languages,
+                "country_language": ", ".join(languages),
+            },
         )
-    handle_profile_pick_language_level(bot, call)
+    handle_profile_pick_language(bot, call)
 
 
 def handle_profile_set_language_level(bot, call: CallbackQuery) -> None:
