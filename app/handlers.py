@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from telebot.types import (
@@ -247,19 +248,44 @@ def clear_state(user_id: int) -> None:
     registration_state.pop(user_id, None)
 
 
+def _parse_force_channel_input(
+    raw: str,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    parts = [p.strip() for p in raw.split() if p.strip()]
+    if not parts:
+        return None, None, "Input is empty."
+
+    channel_ref = parts[0]
+    join_hint = " ".join(parts[1:]) if len(parts) > 1 else ""
+
+    # Accept public channel username or private/public chat id.
+    if channel_ref.startswith("@"):
+        return channel_ref, join_hint, None
+    if channel_ref.startswith("-100") and channel_ref[1:].isdigit():
+        return channel_ref, join_hint, None
+
+    return (
+        None,
+        None,
+        "Use @channel_username or private channel ID like -1001234567890.",
+    )
+
+
 def maybe_force_subscribed(bot, telegram_id: int) -> Tuple[bool, str]:
     cfg = db.get_global_setting("force_subscription", {"enabled": False, "channel": ""})
     enabled = bool(cfg.get("enabled"))
-    channel = (cfg.get("channel") or "").strip()
+    channel = str(cfg.get("channel") or "").strip()
+    join_hint = str(cfg.get("join_hint") or "").strip()
+    join_target = join_hint or channel
     if not enabled or not channel:
         return True, ""
     try:
         member = bot.get_chat_member(channel, telegram_id)
-        if member.status in {"member", "administrator", "creator"}:
+        if member.status in {"member", "administrator", "creator", "restricted"}:
             return True, ""
     except Exception:
-        return False, f"Please join {channel} and try again."
-    return False, f"Please join {channel} and try again."
+        return False, f"Please join {join_target} and try again."
+    return False, f"Please join {join_target} and try again."
 
 
 def show_dashboard(
@@ -2988,7 +3014,13 @@ def handle_admin_set_role(bot, call: CallbackQuery) -> None:
 
 def handle_admin_force_sub_menu(bot, call: CallbackQuery) -> None:
     cfg = db.get_global_setting("force_subscription", {"enabled": False, "channel": ""})
-    text = f"📢 Force Subscription\nEnabled: {'Yes' if cfg.get('enabled') else 'No'}\nChannel: {cfg.get('channel') or 'Not set'}"
+    join_hint = cfg.get("join_hint") or "Not set"
+    text = (
+        "📢 Force Subscription\n"
+        f"Enabled: {'Yes' if cfg.get('enabled') else 'No'}\n"
+        f"Channel Ref: {cfg.get('channel') or 'Not set'}\n"
+        f"Join Link/Hint: {join_hint}"
+    )
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("Set channel", callback_data="admin_force_set_channel")
@@ -3012,7 +3044,14 @@ def handle_admin_force_set_channel(bot, call: CallbackQuery) -> None:
     edit_or_send_message(
         bot,
         call.message.chat.id,
-        "Send channel username like @mychannel",
+        (
+            "Send channel reference for force-subscription.\n"
+            "Formats:\n"
+            "1) @public_channel\n"
+            "2) -1001234567890 (private channel ID)\n"
+            "Optional: add invite link after it, e.g.\n"
+            "-1001234567890 https://t.me/+abcdef"
+        ),
         reply_markup=navigation_markup(back="admin_force_sub_menu"),
         edit_message=call.message,
     )
@@ -3023,15 +3062,33 @@ def handle_admin_set_channel_input(bot, message: Message) -> None:
     state = registration_state.get(message.from_user.id)
     if not state or state.get("step") != "admin_set_channel":
         return
-    channel = message.text.strip()
-    if not channel.startswith("@"):
-        bot.send_message(message.chat.id, "Channel should start with @")
+    channel, join_hint, err = _parse_force_channel_input((message.text or "").strip())
+    if err:
+        bot.send_message(message.chat.id, err)
         return
+
+    # Validate bot access to the channel reference before saving.
+    try:
+        bot.get_chat(channel)
+    except Exception:
+        bot.send_message(
+            message.chat.id,
+            "Bot cannot access that channel. Add the bot to the channel as admin and send a valid @username or -100... ID.",
+        )
+        return
+
     cfg = db.get_global_setting("force_subscription", {"enabled": False, "channel": ""})
     cfg["channel"] = channel
+    cfg["join_hint"] = join_hint
     db.set_global_setting("force_subscription", cfg)
     clear_state(message.from_user.id)
-    bot.send_message(message.chat.id, f"✅ Channel set to {channel}")
+    if join_hint:
+        bot.send_message(
+            message.chat.id,
+            f"✅ Channel set to {channel}\nJoin hint set to: {join_hint}",
+        )
+    else:
+        bot.send_message(message.chat.id, f"✅ Channel set to {channel}")
 
 
 def handle_admin_force_toggle(bot, call: CallbackQuery) -> None:
