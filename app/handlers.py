@@ -9,13 +9,30 @@ import csv
 import io
 from typing import Dict, List, Optional, Tuple
 
-from telebot.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telebot.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
-from app.africa_data import AFRICAN_COUNTRIES, GENDER_OPTIONS, LANGUAGE_LEVEL_OPTIONS, LANGUAGE_OPTIONS
+from app.africa_data import (
+    AFRICAN_COUNTRIES,
+    GENDER_OPTIONS,
+    LANGUAGE_LEVEL_OPTIONS,
+    LANGUAGE_OPTIONS,
+)
 from app import config, db, utils
 
 registration_state: Dict[int, Dict] = {}
-REQUIRED_PROFILE_FIELDS = ["gender", "nationality", "current_country", "current_city", "country_language", "language_level"]
+REQUIRED_PROFILE_FIELDS = [
+    "gender",
+    "nationality",
+    "current_country",
+    "current_city",
+    "country_language",
+    "language_level",
+]
 
 
 def get_active_roles(include_admin: bool = True) -> List[str]:
@@ -64,27 +81,48 @@ def missing_profile_fields(user: Dict) -> List[str]:
         "country_language": "Language",
         "language_level": "Language Level",
     }
-    return [labels[k] for k in REQUIRED_PROFILE_FIELDS if not str(user.get(k, "")).strip()]
+    return [
+        labels[k] for k in REQUIRED_PROFILE_FIELDS if not str(user.get(k, "")).strip()
+    ]
 
 
-def paged_buttons(items: List[str], callback_prefix: str, page: int, per_page: int = 8) -> InlineKeyboardMarkup:
+def paged_buttons(
+    items: List[str], callback_prefix: str, page: int, per_page: int = 8
+) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
     start = page * per_page
     end = min(start + per_page, len(items))
     for idx in range(start, end):
-        markup.add(InlineKeyboardButton(items[idx], callback_data=f"{callback_prefix}|{idx}|{page}"))
+        markup.add(
+            InlineKeyboardButton(
+                items[idx], callback_data=f"{callback_prefix}|{idx}|{page}"
+            )
+        )
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("Prev", callback_data=f"{callback_prefix}_page|{page - 1}"))
+        nav.append(
+            InlineKeyboardButton(
+                "Prev", callback_data=f"{callback_prefix}_page|{page - 1}"
+            )
+        )
     if end < len(items):
-        nav.append(InlineKeyboardButton("Next", callback_data=f"{callback_prefix}_page|{page + 1}"))
+        nav.append(
+            InlineKeyboardButton(
+                "Next", callback_data=f"{callback_prefix}_page|{page + 1}"
+            )
+        )
     if nav:
         markup.row(*nav)
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
     return markup
 
 
-def navigation_markup(back: Optional[str] = None, home: bool = True, cancel: bool = True) -> InlineKeyboardMarkup:
+def navigation_markup(
+    back: Optional[str] = None, home: bool = True, cancel: bool = True
+) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
     row = []
     if back:
@@ -102,7 +140,9 @@ def user_dashboard_markup(user: Dict) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📌 My Tasks", callback_data="my_tasks"))
     markup.add(InlineKeyboardButton("👤 My Profile", callback_data="profile"))
-    markup.add(InlineKeyboardButton("🔔 Notification Settings", callback_data="notif_settings"))
+    markup.add(
+        InlineKeyboardButton("🔔 Notification Settings", callback_data="notif_settings")
+    )
     if user.get("role") == "admin":
         markup.add(InlineKeyboardButton("🛠️ Admin Panel", callback_data="admin_panel"))
     return markup
@@ -121,11 +161,25 @@ def tasks_menu_markup() -> InlineKeyboardMarkup:
 
 def admin_panel_markup() -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📋 Tasks & Reviews", callback_data="admin_cat_tasks"))
-    markup.add(InlineKeyboardButton("👥 Users & Roles", callback_data="admin_cat_users"))
-    markup.add(InlineKeyboardButton("📣 Communication & Settings", callback_data="admin_cat_settings"))
-    markup.add(InlineKeyboardButton("📊 Reports & Analytics", callback_data="admin_cat_reports"))
-    markup.add(InlineKeyboardButton("📈 Quick Stats", callback_data="admin_stats_overview"))
+    markup.add(
+        InlineKeyboardButton("📋 Tasks & Reviews", callback_data="admin_cat_tasks")
+    )
+    markup.add(
+        InlineKeyboardButton("👥 Users & Roles", callback_data="admin_cat_users")
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "📣 Communication & Settings", callback_data="admin_cat_settings"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "📊 Reports & Analytics", callback_data="admin_cat_reports"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton("📈 Quick Stats", callback_data="admin_stats_overview")
+    )
     markup.row(
         InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
         InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
@@ -142,7 +196,12 @@ def edit_or_send_message(
 ) -> None:
     if edit_message:
         try:
-            bot.edit_message_text(text, edit_message.chat.id, edit_message.message_id, reply_markup=reply_markup)
+            bot.edit_message_text(
+                text,
+                edit_message.chat.id,
+                edit_message.message_id,
+                reply_markup=reply_markup,
+            )
             return
         except Exception:
             pass
@@ -151,7 +210,9 @@ def edit_or_send_message(
 
 def _contact_reply_markup(target_user_id: int) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("↩️ Reply", callback_data=f"contact_reply|{target_user_id}"))
+    markup.add(
+        InlineKeyboardButton("↩️ Reply", callback_data=f"contact_reply|{target_user_id}")
+    )
     return markup
 
 
@@ -163,7 +224,9 @@ def _build_dashboard_text(user: Dict) -> str:
     return text
 
 
-def _send_contact_message(bot, sender_id: int, target_id: int, payload: str, sender_is_admin: bool) -> bool:
+def _send_contact_message(
+    bot, sender_id: int, target_id: int, payload: str, sender_is_admin: bool
+) -> bool:
     sender = db.get_user(sender_id)
     sender_name = short_name(sender) if sender else str(sender_id)
     label = "Admin" if sender_is_admin else "User"
@@ -199,13 +262,25 @@ def maybe_force_subscribed(bot, telegram_id: int) -> Tuple[bool, str]:
     return False, f"Please join {channel} and try again."
 
 
-def show_dashboard(bot, telegram_id: int, chat_id: int, edit_message: Optional[Message] = None) -> None:
+def show_dashboard(
+    bot, telegram_id: int, chat_id: int, edit_message: Optional[Message] = None
+) -> None:
     user = db.get_user(telegram_id)
     if not user:
-        edit_or_send_message(bot, chat_id, "Please use /start to register first.", edit_message=edit_message)
+        edit_or_send_message(
+            bot,
+            chat_id,
+            "Please use /start to register first.",
+            edit_message=edit_message,
+        )
         return
     if user.get("is_banned"):
-        edit_or_send_message(bot, chat_id, "Your account is restricted. Contact admin.", edit_message=edit_message)
+        edit_or_send_message(
+            bot,
+            chat_id,
+            "Your account is restricted. Contact admin.",
+            edit_message=edit_message,
+        )
         return
     allowed, msg = maybe_force_subscribed(bot, telegram_id)
     if not allowed:
@@ -221,12 +296,24 @@ def show_dashboard(bot, telegram_id: int, chat_id: int, edit_message: Optional[M
             f"{missing}"
         )
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("✏️ Complete Profile", callback_data="profile_edit_menu"))
+        markup.add(
+            InlineKeyboardButton(
+                "✏️ Complete Profile", callback_data="profile_edit_menu"
+            )
+        )
         markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-        edit_or_send_message(bot, chat_id, text, reply_markup=markup, edit_message=edit_message)
+        edit_or_send_message(
+            bot, chat_id, text, reply_markup=markup, edit_message=edit_message
+        )
         return
 
-    edit_or_send_message(bot, chat_id, _build_dashboard_text(user), reply_markup=user_dashboard_markup(user), edit_message=edit_message)
+    edit_or_send_message(
+        bot,
+        chat_id,
+        _build_dashboard_text(user),
+        reply_markup=user_dashboard_markup(user),
+        edit_message=edit_message,
+    )
 
 
 def require_profile_access_callback(bot, call: CallbackQuery) -> bool:
@@ -236,14 +323,18 @@ def require_profile_access_callback(bot, call: CallbackQuery) -> bool:
         return False
     if is_profile_complete(user):
         return True
-    show_dashboard(bot, call.from_user.id, call.message.chat.id, edit_message=call.message)
+    show_dashboard(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
     return False
 
 
 def require_profile_access_source(bot, source) -> bool:
     telegram_id = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     edit_message = source.message if isinstance(source, CallbackQuery) else None
     user = db.get_user(telegram_id)
     if not user:
@@ -280,6 +371,7 @@ def notify_admins_of_submission(bot, user_id: int, task_id: str) -> None:
 
 # Registration
 
+
 def handle_start(bot, message: Message) -> None:
     existing = db.get_user(message.from_user.id)
     if existing:
@@ -288,8 +380,14 @@ def handle_start(bot, message: Message) -> None:
     markup = InlineKeyboardMarkup()
     if is_registration_open():
         markup.add(InlineKeyboardButton("🟢 Register", callback_data="start_register"))
-    markup.add(InlineKeyboardButton("📩 Contact Admin", callback_data="help_contact_admin"))
-    status_line = "Registration is currently open." if is_registration_open() else "Registration is currently closed by admin."
+    markup.add(
+        InlineKeyboardButton("📩 Contact Admin", callback_data="help_contact_admin")
+    )
+    status_line = (
+        "Registration is currently open."
+        if is_registration_open()
+        else "Registration is currently closed by admin."
+    )
     bot.send_message(
         message.chat.id,
         f"Welcome. Use /register (or button) to apply when registration is open.\n{status_line}",
@@ -299,15 +397,24 @@ def handle_start(bot, message: Message) -> None:
 
 def handle_register_start(bot, source) -> None:
     user_id = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     edit_message = source.message if isinstance(source, CallbackQuery) else None
     if not is_registration_open():
-        edit_or_send_message(bot, chat_id, "Registration is currently closed by admin. Contact admin with /admin your message.", edit_message=edit_message)
+        edit_or_send_message(
+            bot,
+            chat_id,
+            "Registration is currently closed by admin. Contact admin with /admin your message.",
+            edit_message=edit_message,
+        )
         if isinstance(source, CallbackQuery):
             bot.answer_callback_query(source.id)
         return
     if db.get_user(user_id):
-        edit_or_send_message(bot, chat_id, "You are already registered.", edit_message=edit_message)
+        edit_or_send_message(
+            bot, chat_id, "You are already registered.", edit_message=edit_message
+        )
         if isinstance(source, CallbackQuery):
             bot.answer_callback_query(source.id)
         return
@@ -333,7 +440,11 @@ def handle_register_first_name(bot, message: Message) -> None:
         return
     state["first_name"] = first_name
     state["step"] = "reg_last_name"
-    bot.send_message(message.chat.id, "Enter last name (example: Michael):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Enter last name (example: Michael):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_register_last_name(bot, message: Message) -> None:
@@ -346,7 +457,11 @@ def handle_register_last_name(bot, message: Message) -> None:
         return
     state["last_name"] = last_name
     state["step"] = "reg_email"
-    bot.send_message(message.chat.id, "Enter email (example: john.michael@example.com):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Enter email (example: john.michael@example.com):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_register_email(bot, message: Message) -> None:
@@ -361,9 +476,16 @@ def handle_register_email(bot, message: Message) -> None:
     state["step"] = "reg_role"
     markup = InlineKeyboardMarkup()
     for role in get_active_roles(include_admin=False):
-        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"reg_role|{role}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Select role from the buttons below:", reply_markup=markup)
+        markup.add(
+            InlineKeyboardButton(role_label(role), callback_data=f"reg_role|{role}")
+        )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        message.chat.id, "Select role from the buttons below:", reply_markup=markup
+    )
 
 
 def handle_register_role(bot, call: CallbackQuery) -> None:
@@ -385,17 +507,29 @@ def handle_register_role(bot, call: CallbackQuery) -> None:
     reg_id = db.create_pending_registration(payload)
     clear_state(call.from_user.id)
     if not reg_id:
-        bot.send_message(call.message.chat.id, "Failed to submit application. Try again.")
+        bot.send_message(
+            call.message.chat.id, "Failed to submit application. Try again."
+        )
         bot.answer_callback_query(call.id)
         return
 
-    bot.send_message(call.message.chat.id, "✅ Application submitted. Wait for admin approval.")
+    bot.send_message(
+        call.message.chat.id, "✅ Application submitted. Wait for admin approval."
+    )
     admins = db.get_users_by_role("admin")
     for admin in admins:
         try:
             m = InlineKeyboardMarkup()
-            m.add(InlineKeyboardButton("✅ Approve", callback_data=f"reg_approve|{reg_id}"))
-            m.add(InlineKeyboardButton("❌ Decline", callback_data=f"reg_decline|{reg_id}"))
+            m.add(
+                InlineKeyboardButton(
+                    "✅ Approve", callback_data=f"reg_approve|{reg_id}"
+                )
+            )
+            m.add(
+                InlineKeyboardButton(
+                    "❌ Decline", callback_data=f"reg_decline|{reg_id}"
+                )
+            )
             bot.send_message(
                 admin["telegram_id"],
                 (
@@ -454,9 +588,13 @@ def handle_registration_approval(bot, call: CallbackQuery, approve: bool) -> Non
             "created_at": db.utcnow(),
         }
         created = db.add_user(user)
-        db.update_pending_registration(reg_id, {"status": "APPROVED", "handled_by": call.from_user.id})
+        db.update_pending_registration(
+            reg_id, {"status": "APPROVED", "handled_by": call.from_user.id}
+        )
         if created:
-            notify_users(bot, [uid], "✅ Your registration was approved. You are now registered.")
+            notify_users(
+                bot, [uid], "✅ Your registration was approved. You are now registered."
+            )
             bot.edit_message_text(
                 (
                     "✅ Registration approved\n"
@@ -469,10 +607,20 @@ def handle_registration_approval(bot, call: CallbackQuery, approve: bool) -> Non
                 call.message.message_id,
             )
         else:
-            bot.edit_message_text("User is already registered.", call.message.chat.id, call.message.message_id)
+            bot.edit_message_text(
+                "User is already registered.",
+                call.message.chat.id,
+                call.message.message_id,
+            )
     else:
-        db.update_pending_registration(reg_id, {"status": "DECLINED", "handled_by": call.from_user.id})
-        notify_users(bot, [uid], "❌ Your registration was declined. Contact admin with /admin your message.")
+        db.update_pending_registration(
+            reg_id, {"status": "DECLINED", "handled_by": call.from_user.id}
+        )
+        notify_users(
+            bot,
+            [uid],
+            "❌ Your registration was declined. Contact admin with /admin your message.",
+        )
         bot.edit_message_text(
             (
                 "❌ Registration declined\n"
@@ -502,7 +650,11 @@ def handle_email(bot, message: Message) -> None:
         return
     role = invited.get("role") or (invited.get("roles", [""])[0])
     state.update({"email": email, "role": role, "step": "first_name"})
-    bot.send_message(message.chat.id, f"✅ Email approved. Role: {role_label(role)}\nEnter first name:", reply_markup=navigation_markup(home=False))
+    bot.send_message(
+        message.chat.id,
+        f"✅ Email approved. Role: {role_label(role)}\nEnter first name:",
+        reply_markup=navigation_markup(home=False),
+    )
 
 
 def handle_first_name(bot, message: Message) -> None:
@@ -515,7 +667,9 @@ def handle_first_name(bot, message: Message) -> None:
         return
     state["first_name"] = name
     state["step"] = "last_name"
-    bot.send_message(message.chat.id, "Enter last name:", reply_markup=navigation_markup(home=False))
+    bot.send_message(
+        message.chat.id, "Enter last name:", reply_markup=navigation_markup(home=False)
+    )
 
 
 def handle_last_name(bot, message: Message) -> None:
@@ -544,17 +698,23 @@ def handle_last_name(bot, message: Message) -> None:
         "created_at": db.utcnow(),
     }
     if not db.add_user(user):
-        bot.send_message(message.chat.id, "Registration failed. You may already be registered.")
+        bot.send_message(
+            message.chat.id, "Registration failed. You may already be registered."
+        )
         clear_state(message.from_user.id)
         return
     clear_state(message.from_user.id)
-    bot.send_message(message.chat.id, f"✅ Registration complete as {role_label(user['role'])}.")
+    bot.send_message(
+        message.chat.id, f"✅ Registration complete as {role_label(user['role'])}."
+    )
     show_dashboard(bot, message.from_user.id, message.chat.id)
 
 
 def handle_cancel(bot, source) -> None:
     user_id = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     clear_state(user_id)
     if isinstance(source, CallbackQuery):
         show_dashboard(bot, user_id, chat_id, edit_message=source.message)
@@ -566,8 +726,11 @@ def handle_cancel(bot, source) -> None:
 
 # User dashboard
 
+
 def handle_dashboard_callback(bot, call: CallbackQuery) -> None:
-    show_dashboard(bot, call.from_user.id, call.message.chat.id, edit_message=call.message)
+    show_dashboard(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -603,9 +766,16 @@ def handle_profile(bot, call: CallbackQuery) -> None:
         text += "\nEmail edit: Off"
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✏️ Edit Profile", callback_data="profile_edit_menu"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.add(
+        InlineKeyboardButton("✏️ Edit Profile", callback_data="profile_edit_menu")
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -623,19 +793,38 @@ def handle_profile_edit_menu(bot, call: CallbackQuery) -> None:
     )
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Gender", callback_data="profile_pick_gender"))
-    markup.add(InlineKeyboardButton("Nationality", callback_data="profile_pick_nationality|0"))
-    markup.add(InlineKeyboardButton("Current Country", callback_data="profile_pick_country|0"))
-    markup.add(InlineKeyboardButton("Current City (type)", callback_data="profile_pick_city"))
+    markup.add(
+        InlineKeyboardButton("Nationality", callback_data="profile_pick_nationality|0")
+    )
+    markup.add(
+        InlineKeyboardButton("Current Country", callback_data="profile_pick_country|0")
+    )
+    markup.add(
+        InlineKeyboardButton("Current City (type)", callback_data="profile_pick_city")
+    )
     markup.add(InlineKeyboardButton("Language", callback_data="profile_pick_language"))
-    markup.add(InlineKeyboardButton("Language Level", callback_data="profile_pick_language_level"))
+    markup.add(
+        InlineKeyboardButton(
+            "Language Level", callback_data="profile_pick_language_level"
+        )
+    )
     if name_edit_enabled:
-        markup.add(InlineKeyboardButton("First Name", callback_data="profile_edit_first_name"))
-        markup.add(InlineKeyboardButton("Last Name", callback_data="profile_edit_last_name"))
+        markup.add(
+            InlineKeyboardButton("First Name", callback_data="profile_edit_first_name")
+        )
+        markup.add(
+            InlineKeyboardButton("Last Name", callback_data="profile_edit_last_name")
+        )
     if email_edit_enabled:
         markup.add(InlineKeyboardButton("Email", callback_data="profile_edit_email"))
-    markup.row(InlineKeyboardButton("✅ Done", callback_data="profile_finish"), InlineKeyboardButton("⬅️ Back", callback_data="profile"))
+    markup.row(
+        InlineKeyboardButton("✅ Done", callback_data="profile_finish"),
+        InlineKeyboardButton("⬅️ Back", callback_data="profile"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -643,16 +832,32 @@ def handle_profile_pick_gender(bot, call: CallbackQuery) -> None:
     markup = InlineKeyboardMarkup()
     for g in GENDER_OPTIONS:
         markup.add(InlineKeyboardButton(g, callback_data=f"profile_set_gender|{g}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("Select gender:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        "Select gender:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
-def _show_profile_country_picker(bot, call: CallbackQuery, field: str, page: int) -> None:
-    title = "Select nationality:" if field == "nationality" else "Select current country:"
-    prefix = "profile_set_nationality" if field == "nationality" else "profile_set_country"
+def _show_profile_country_picker(
+    bot, call: CallbackQuery, field: str, page: int
+) -> None:
+    title = (
+        "Select nationality:" if field == "nationality" else "Select current country:"
+    )
+    prefix = (
+        "profile_set_nationality" if field == "nationality" else "profile_set_country"
+    )
     markup = paged_buttons(AFRICAN_COUNTRIES, prefix, page)
-    bot.edit_message_text(title, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        title, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
 
 
 def handle_profile_pick_nationality(bot, call: CallbackQuery) -> None:
@@ -700,18 +905,38 @@ def handle_profile_pick_city_page(bot, call: CallbackQuery) -> None:
 def handle_profile_pick_language(bot, call: CallbackQuery) -> None:
     markup = InlineKeyboardMarkup()
     for i, lang in enumerate(LANGUAGE_OPTIONS):
-        markup.add(InlineKeyboardButton(lang, callback_data=f"profile_set_language|{i}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("Select language:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        markup.add(
+            InlineKeyboardButton(lang, callback_data=f"profile_set_language|{i}")
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        "Select language:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
 def handle_profile_pick_language_level(bot, call: CallbackQuery) -> None:
     markup = InlineKeyboardMarkup()
     for i, level in enumerate(LANGUAGE_LEVEL_OPTIONS):
-        markup.add(InlineKeyboardButton(level, callback_data=f"profile_set_language_level|{i}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("Select language level:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        markup.add(
+            InlineKeyboardButton(level, callback_data=f"profile_set_language_level|{i}")
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        "Select language level:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -752,7 +977,10 @@ def handle_profile_set_language(bot, call: CallbackQuery) -> None:
     _, raw_idx = call.data.split("|", 1)
     idx = int(raw_idx)
     if 0 <= idx < len(LANGUAGE_OPTIONS):
-        db.update_user(call.from_user.id, {"country_language": LANGUAGE_OPTIONS[idx], "language_level": ""})
+        db.update_user(
+            call.from_user.id,
+            {"country_language": LANGUAGE_OPTIONS[idx], "language_level": ""},
+        )
     handle_profile_pick_language_level(bot, call)
 
 
@@ -760,7 +988,9 @@ def handle_profile_set_language_level(bot, call: CallbackQuery) -> None:
     _, raw_idx = call.data.split("|", 1)
     idx = int(raw_idx)
     if 0 <= idx < len(LANGUAGE_LEVEL_OPTIONS):
-        db.update_user(call.from_user.id, {"language_level": LANGUAGE_LEVEL_OPTIONS[idx]})
+        db.update_user(
+            call.from_user.id, {"language_level": LANGUAGE_LEVEL_OPTIONS[idx]}
+        )
     handle_profile_edit_menu(bot, call)
 
 
@@ -787,15 +1017,23 @@ def handle_profile_finish(bot, call: CallbackQuery) -> None:
         missing = ", ".join(missing_profile_fields(user))
         bot.answer_callback_query(call.id, f"Missing: {missing}")
         return
-    show_dashboard(bot, call.from_user.id, call.message.chat.id, edit_message=call.message)
+    show_dashboard(
+        bot, call.from_user.id, call.message.chat.id, edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
 
 
-def handle_profile_edit_name_or_email_start(bot, call: CallbackQuery, field: str) -> None:
-    if field in {"first_name", "last_name"} and not bool(db.get_global_setting("allow_profile_name_edit", False)):
+def handle_profile_edit_name_or_email_start(
+    bot, call: CallbackQuery, field: str
+) -> None:
+    if field in {"first_name", "last_name"} and not bool(
+        db.get_global_setting("allow_profile_name_edit", False)
+    ):
         bot.answer_callback_query(call.id, "Name editing is disabled by admin")
         return
-    if field == "email" and not bool(db.get_global_setting("allow_profile_email_edit", False)):
+    if field == "email" and not bool(
+        db.get_global_setting("allow_profile_email_edit", False)
+    ):
         bot.answer_callback_query(call.id, "Email editing is disabled by admin")
         return
     step_name = f"profile_edit_{field}"
@@ -842,9 +1080,16 @@ def handle_notif_settings(bot, call: CallbackQuery) -> None:
     text = f"🔔 Notifications\nEnabled: {'Yes' if enabled else 'No'}\nHours before deadline: {', '.join(str(h) for h in hours)}"
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Toggle On/Off", callback_data="notif_toggle"))
-    markup.add(InlineKeyboardButton("Set reminder hours", callback_data="notif_set_hours"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.add(
+        InlineKeyboardButton("Set reminder hours", callback_data="notif_set_hours")
+    )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -852,7 +1097,9 @@ def handle_notif_toggle(bot, call: CallbackQuery) -> None:
     pref = db.get_user_pref(call.from_user.id)
     new_val = not pref.get("reminders_enabled", True)
     db.set_user_pref(call.from_user.id, {"reminders_enabled": new_val})
-    bot.answer_callback_query(call.id, f"Notifications {'enabled' if new_val else 'disabled'}")
+    bot.answer_callback_query(
+        call.id, f"Notifications {'enabled' if new_val else 'disabled'}"
+    )
     handle_notif_settings(bot, call)
 
 
@@ -880,7 +1127,9 @@ def handle_notif_hours_input(bot, message: Message) -> None:
         bot.send_message(message.chat.id, "Invalid format. Example: 24,6,2")
         return
     if not hours:
-        bot.send_message(message.chat.id, "Please provide at least one hour value between 1 and 168.")
+        bot.send_message(
+            message.chat.id, "Please provide at least one hour value between 1 and 168."
+        )
         return
     db.set_user_pref(message.from_user.id, {"reminder_hours": hours})
     clear_state(message.from_user.id)
@@ -891,7 +1140,12 @@ def handle_notif_hours_input(bot, message: Message) -> None:
 def handle_my_tasks(bot, call: CallbackQuery) -> None:
     if not require_profile_access_callback(bot, call):
         return
-    bot.edit_message_text("📌 My Tasks", call.message.chat.id, call.message.message_id, reply_markup=tasks_menu_markup())
+    bot.edit_message_text(
+        "📌 My Tasks",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=tasks_menu_markup(),
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -905,7 +1159,11 @@ def _task_status_for_user(task: Dict, user_id: int) -> str:
 def _task_list_for_user(user: Dict, requested_status: str) -> List[Dict]:
     result: List[Dict] = []
     for task in db.get_tasks_for_user(user):
-        effective = config.TASK_STATUS_COMPLETED if task.get("status") == config.TASK_STATUS_COMPLETED else _task_status_for_user(task, user["telegram_id"])
+        effective = (
+            config.TASK_STATUS_COMPLETED
+            if task.get("status") == config.TASK_STATUS_COMPLETED
+            else _task_status_for_user(task, user["telegram_id"])
+        )
         if effective == requested_status:
             result.append(task)
     return result
@@ -918,19 +1176,40 @@ def handle_task_list(bot, call: CallbackQuery, status: str) -> None:
     if not user:
         bot.answer_callback_query(call.id, "Not registered")
         return
-    wanted = config.TASK_STATUS_ONGOING if status == "ONGOING" else config.TASK_STATUS_COMPLETED
+    wanted = (
+        config.TASK_STATUS_ONGOING
+        if status == "ONGOING"
+        else config.TASK_STATUS_COMPLETED
+    )
     tasks = _task_list_for_user(user, wanted)
     if not tasks:
-        bot.edit_message_text(f"No {wanted.lower()} tasks.", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="my_tasks"))
+        bot.edit_message_text(
+            f"No {wanted.lower()} tasks.",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=navigation_markup(back="my_tasks"),
+        )
         bot.answer_callback_query(call.id)
         return
 
     markup = InlineKeyboardMarkup()
     for t in tasks:
-        markup.add(InlineKeyboardButton(f"📄 {t.get('title', 'Untitled')}", callback_data=f"task|{t['_id']}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="my_tasks"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                f"📄 {t.get('title', 'Untitled')}", callback_data=f"task|{t['_id']}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="my_tasks"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(f"{wanted.title()} Tasks", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        f"{wanted.title()} Tasks",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -956,13 +1235,29 @@ def handle_task_detail(bot, call: CallbackQuery) -> None:
         text += f"\nTask attachments: {len(task.get('attachments', []))}"
     markup = InlineKeyboardMarkup()
     if _task_status_for_user(task, call.from_user.id) == config.TASK_STATUS_ONGOING:
-        markup.add(InlineKeyboardButton("✅ Submit Task", callback_data=f"submit|{task_id}"))
+        markup.add(
+            InlineKeyboardButton("✅ Submit Task", callback_data=f"submit|{task_id}")
+        )
     if task.get("attachments"):
-        markup.add(InlineKeyboardButton("📎 View task attachments", callback_data=f"taskatt|{task_id}"))
-    markup.add(InlineKeyboardButton("💬 Task Discussion", callback_data=f"thread_open|{task_id}|{call.from_user.id}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="tasks_ongoing"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                "📎 View task attachments", callback_data=f"taskatt|{task_id}"
+            )
+        )
+    markup.add(
+        InlineKeyboardButton(
+            "💬 Task Discussion",
+            callback_data=f"thread_open|{task_id}|{call.from_user.id}",
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="tasks_ongoing"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -979,12 +1274,17 @@ def handle_task_attachments(bot, call: CallbackQuery) -> None:
     bot.answer_callback_query(call.id, "Sending attachments...")
     for item in attachments:
         try:
-            bot.send_document(call.message.chat.id, item["file_id"], caption=item.get("file_name", "attachment"))
+            bot.send_document(
+                call.message.chat.id,
+                item["file_id"],
+                caption=item.get("file_name", "attachment"),
+            )
         except Exception:
             continue
 
 
 # Submission flow
+
 
 def handle_submit_task(bot, call: CallbackQuery) -> None:
     if not require_profile_access_callback(bot, call):
@@ -995,7 +1295,11 @@ def handle_submit_task(bot, call: CallbackQuery) -> None:
     if not task or not user:
         bot.answer_callback_query(call.id, "Task not found")
         return
-    registration_state[call.from_user.id] = {"step": "submit_work_url", "task_id": task_id, "submission": {"files": [], "custom_fields": []}}
+    registration_state[call.from_user.id] = {
+        "step": "submit_work_url",
+        "task_id": task_id,
+        "submission": {"files": [], "custom_fields": []},
+    }
     edit_or_send_message(
         bot,
         call.message.chat.id,
@@ -1038,9 +1342,22 @@ def handle_thread_open(bot, call: CallbackQuery) -> None:
         lines.append(f"[{role}] {msg.get('text', '')}")
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✍️ Send Message", callback_data=f"thread_write|{task_id}|{user_id}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, call.message.chat.id, "\n".join(lines), reply_markup=markup, edit_message=call.message)
+    markup.add(
+        InlineKeyboardButton(
+            "✍️ Send Message", callback_data=f"thread_write|{task_id}|{user_id}"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        "\n".join(lines),
+        reply_markup=markup,
+        edit_message=call.message,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1053,7 +1370,11 @@ def handle_thread_write(bot, call: CallbackQuery) -> None:
         return
     task_id = parts[1]
     user_id = int(parts[2])
-    registration_state[call.from_user.id] = {"step": "thread_message", "task_id": task_id, "thread_user_id": user_id}
+    registration_state[call.from_user.id] = {
+        "step": "thread_message",
+        "task_id": task_id,
+        "thread_user_id": user_id,
+    }
     edit_or_send_message(
         bot,
         call.message.chat.id,
@@ -1079,7 +1400,9 @@ def handle_thread_message_input(bot, message: Message) -> None:
         return
     task_id = state["task_id"]
     thread_user_id = state["thread_user_id"]
-    db.add_thread_message(task_id, thread_user_id, message.from_user.id, sender.get("role", "user"), text)
+    db.add_thread_message(
+        task_id, thread_user_id, message.from_user.id, sender.get("role", "user"), text
+    )
     clear_state(message.from_user.id)
     task = db.get_task(task_id)
     task_title = task.get("title", "Task") if task else "Task"
@@ -1093,7 +1416,12 @@ def handle_thread_message_input(bot, message: Message) -> None:
     for admin in admins:
         try:
             markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("💬 Open Thread", callback_data=f"thread_open|{task_id}|{thread_user_id}"))
+            markup.add(
+                InlineKeyboardButton(
+                    "💬 Open Thread",
+                    callback_data=f"thread_open|{task_id}|{thread_user_id}",
+                )
+            )
             bot.send_message(
                 admin["telegram_id"],
                 f"💬 New user message\nTask: {task_title}\nIntern: {intern_name}\nMessage: {text}",
@@ -1101,7 +1429,9 @@ def handle_thread_message_input(bot, message: Message) -> None:
             )
         except Exception:
             continue
-    notify_users(bot, [thread_user_id], f"💬 New thread message on '{task_title}': {text}")
+    notify_users(
+        bot, [thread_user_id], f"💬 New thread message on '{task_title}': {text}"
+    )
     bot.send_message(message.chat.id, "✅ Thread message sent.")
 
 
@@ -1128,10 +1458,22 @@ def handle_admin_threads_menu(bot, call: CallbackQuery) -> None:
         user = db.get_user(user_id)
         title = (task or {}).get("title", "Unknown Task")
         uname = short_name(user) if user else str(user_id)
-        markup.add(InlineKeyboardButton(f"{title} - {uname}", callback_data=f"thread_open|{task_id}|{user_id}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                f"{title} - {uname}", callback_data=f"thread_open|{task_id}|{user_id}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("💬 Task Threads", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        "💬 Task Threads",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1141,15 +1483,22 @@ def handle_submit_work_url(bot, message: Message) -> None:
         return
     url = message.text.strip()
     if not utils.is_valid_url(url):
-        bot.send_message(message.chat.id, "Please send a valid URL (http:// or https://).")
+        bot.send_message(
+            message.chat.id, "Please send a valid URL (http:// or https://)."
+        )
         return
     state["submission"]["work_url"] = url
     state["step"] = "submit_deployed"
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("✅ Yes", callback_data="submit_deployed_yes"))
     markup.add(InlineKeyboardButton("❌ No", callback_data="submit_deployed_no"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Is this task deployed/live?", reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        message.chat.id, "Is this task deployed/live?", reply_markup=markup
+    )
 
 
 def handle_submit_deployed_choice(bot, call: CallbackQuery) -> None:
@@ -1160,11 +1509,19 @@ def handle_submit_deployed_choice(bot, call: CallbackQuery) -> None:
     state["submission"]["is_deployed"] = has_demo
     if has_demo:
         state["step"] = "submit_demo_url"
-        bot.send_message(call.message.chat.id, "Send live demo URL (example: https://myapp.vercel.app):", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(
+            call.message.chat.id,
+            "Send live demo URL (example: https://myapp.vercel.app):",
+            reply_markup=navigation_markup(cancel=True),
+        )
     else:
         state["submission"]["demo_url"] = None
         state["step"] = "submit_learned"
-        bot.send_message(call.message.chat.id, "What did you learn from this task? (example: I learned API pagination and better state handling.)", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(
+            call.message.chat.id,
+            "What did you learn from this task? (example: I learned API pagination and better state handling.)",
+            reply_markup=navigation_markup(cancel=True),
+        )
     bot.answer_callback_query(call.id)
 
 
@@ -1178,7 +1535,11 @@ def handle_submit_demo_url(bot, message: Message) -> None:
         return
     state["submission"]["demo_url"] = url
     state["step"] = "submit_learned"
-    bot.send_message(message.chat.id, "What did you learn from this task? (example: I learned API pagination and better state handling.)", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "What did you learn from this task? (example: I learned API pagination and better state handling.)",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_submit_learned(bot, message: Message) -> None:
@@ -1191,7 +1552,11 @@ def handle_submit_learned(bot, message: Message) -> None:
         return
     state["submission"]["learned"] = learned
     state["step"] = "submit_importance"
-    bot.send_message(message.chat.id, "Rate task importance from 1 to 10 (example: 8):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Rate task importance from 1 to 10 (example: 8):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_submit_importance(bot, message: Message) -> None:
@@ -1208,10 +1573,19 @@ def handle_submit_importance(bot, message: Message) -> None:
     state["submission"]["importance_rating"] = val
     state["step"] = "submit_custom_field_ask"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("➕ Add custom field", callback_data="submit_custom_yes"))
+    markup.add(
+        InlineKeyboardButton("➕ Add custom field", callback_data="submit_custom_yes")
+    )
     markup.add(InlineKeyboardButton("➡️ Continue", callback_data="submit_custom_no"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Do you want to add any extra field (name + data)?", reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        message.chat.id,
+        "Do you want to add any extra field (name + data)?",
+        reply_markup=markup,
+    )
 
 
 def handle_submit_custom_choice(bot, call: CallbackQuery) -> None:
@@ -1220,13 +1594,26 @@ def handle_submit_custom_choice(bot, call: CallbackQuery) -> None:
         return
     if call.data == "submit_custom_yes":
         state["step"] = "submit_custom_name"
-        bot.send_message(call.message.chat.id, "Enter custom field name (example: Figma Prototype):", reply_markup=navigation_markup(cancel=True))
+        bot.send_message(
+            call.message.chat.id,
+            "Enter custom field name (example: Figma Prototype):",
+            reply_markup=navigation_markup(cancel=True),
+        )
     else:
         state["step"] = "submit_assets_choice"
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("✅ Yes, I have files", callback_data="submit_assets_yes"))
-        markup.add(InlineKeyboardButton("⏭️ No extra files", callback_data="submit_assets_no"))
-        markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+        markup.add(
+            InlineKeyboardButton(
+                "✅ Yes, I have files", callback_data="submit_assets_yes"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton("⏭️ No extra files", callback_data="submit_assets_no")
+        )
+        markup.row(
+            InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+        )
         bot.send_message(
             call.message.chat.id,
             (
@@ -1277,7 +1664,11 @@ def handle_submit_custom_name(bot, message: Message) -> None:
         return
     state["current_custom_name"] = name
     state["step"] = "submit_custom_value"
-    bot.send_message(message.chat.id, f"Enter value for '{name}' (example: https://figma.com/file/abc123):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        f"Enter value for '{name}' (example: https://figma.com/file/abc123):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_submit_custom_value(bot, message: Message) -> None:
@@ -1288,21 +1679,39 @@ def handle_submit_custom_value(bot, message: Message) -> None:
     if not val:
         bot.send_message(message.chat.id, "Value cannot be empty.")
         return
-    state["submission"]["custom_fields"].append({"name": state.pop("current_custom_name"), "value": val})
+    state["submission"]["custom_fields"].append(
+        {"name": state.pop("current_custom_name"), "value": val}
+    )
     state["step"] = "submit_custom_field_ask"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("➕ Add another field", callback_data="submit_custom_yes"))
+    markup.add(
+        InlineKeyboardButton("➕ Add another field", callback_data="submit_custom_yes")
+    )
     markup.add(InlineKeyboardButton("➡️ Continue", callback_data="submit_custom_no"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Custom field added ✅. Add another?", reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        message.chat.id, "Custom field added ✅. Add another?", reply_markup=markup
+    )
 
 
 def _prompt_submission_files(bot, chat_id: int) -> None:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✅ Done uploading", callback_data="submit_files_done"))
+    markup.add(
+        InlineKeyboardButton("✅ Done uploading", callback_data="submit_files_done")
+    )
     markup.add(InlineKeyboardButton("⏭️ Skip files", callback_data="submit_files_skip"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(chat_id, "Upload multiple files now (images, PDFs, docs). When finished click Done uploading.", reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        chat_id,
+        "Upload multiple files now (images, PDFs, docs). When finished click Done uploading.",
+        reply_markup=markup,
+    )
 
 
 def handle_submit_file_message(bot, message: Message) -> None:
@@ -1325,11 +1734,15 @@ def handle_submit_file_message(bot, message: Message) -> None:
         }
 
     if not item:
-        bot.send_message(message.chat.id, "Unsupported file. Upload image/document/pdf/doc/docx.")
+        bot.send_message(
+            message.chat.id, "Unsupported file. Upload image/document/pdf/doc/docx."
+        )
         return
 
     state["submission"]["files"].append(item)
-    bot.send_message(message.chat.id, f"File added ✅ ({len(state['submission']['files'])} total)")
+    bot.send_message(
+        message.chat.id, f"File added ✅ ({len(state['submission']['files'])} total)"
+    )
 
 
 def handle_submit_files_action(bot, call: CallbackQuery) -> None:
@@ -1373,6 +1786,7 @@ def _finalize_submission(bot, user_id: int, chat_id: int) -> None:
 
 # Admin: add intern
 
+
 def handle_admin_add_intern(bot, call: CallbackQuery) -> None:
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "Admin only")
@@ -1402,8 +1816,15 @@ def handle_admin_add_email(bot, message: Message) -> None:
     for role in get_active_roles(include_admin=False):
         if role == "admin":
             continue
-        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_add_role|{role}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+        markup.add(
+            InlineKeyboardButton(
+                role_label(role), callback_data=f"admin_add_role|{role}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
     bot.send_message(message.chat.id, "Select role:", reply_markup=markup)
 
 
@@ -1419,19 +1840,28 @@ def handle_admin_add_role(bot, call: CallbackQuery) -> None:
     ok = db.upsert_invited_user(email, role, added_by=call.from_user.id)
     clear_state(call.from_user.id)
     if ok:
-        bot.edit_message_text(f"✅ Allowed intern added\nEmail: {email}\nRole: {role_label(role)}", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(
+            f"✅ Allowed intern added\nEmail: {email}\nRole: {role_label(role)}",
+            call.message.chat.id,
+            call.message.message_id,
+        )
     else:
-        bot.edit_message_text("Failed to add intern.", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(
+            "Failed to add intern.", call.message.chat.id, call.message.message_id
+        )
     bot.answer_callback_query(call.id)
 
 
 # Admin assign task with attachments
 
+
 def handle_admin_assign_task(bot, source) -> None:
     if not require_profile_access_source(bot, source):
         return
     user_id = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     edit_message = source.message if isinstance(source, CallbackQuery) else None
     if not is_admin(user_id):
         if isinstance(source, CallbackQuery):
@@ -1439,7 +1869,10 @@ def handle_admin_assign_task(bot, source) -> None:
         else:
             bot.send_message(chat_id, "Admin only")
         return
-    registration_state[user_id] = {"step": "admin_task_title", "task": {"assigned_user_ids": [], "assigned_roles": [], "attachments": []}}
+    registration_state[user_id] = {
+        "step": "admin_task_title",
+        "task": {"assigned_user_ids": [], "assigned_roles": [], "attachments": []},
+    }
     edit_or_send_message(
         bot,
         chat_id,
@@ -1461,7 +1894,11 @@ def handle_admin_task_title(bot, message: Message) -> None:
         return
     state["task"]["title"] = title
     state["step"] = "admin_task_description"
-    bot.send_message(message.chat.id, "Enter task description (example: Implement responsive dashboard with charts and filters):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Enter task description (example: Implement responsive dashboard with charts and filters):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_admin_task_description(bot, message: Message) -> None:
@@ -1474,7 +1911,11 @@ def handle_admin_task_description(bot, message: Message) -> None:
         return
     state["task"]["description"] = desc
     state["step"] = "admin_task_deadline"
-    bot.send_message(message.chat.id, "Enter deadline in YYYY-MM-DD (example: 2026-04-10):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Enter deadline in YYYY-MM-DD (example: 2026-04-10):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_admin_task_deadline(bot, message: Message) -> None:
@@ -1490,10 +1931,21 @@ def handle_admin_task_deadline(bot, message: Message) -> None:
     state["task"]["deadline"] = deadline
     state["step"] = "admin_task_attach_ask"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📎 Add attachments", callback_data="admin_task_attach_yes"))
+    markup.add(
+        InlineKeyboardButton(
+            "📎 Add attachments", callback_data="admin_task_attach_yes"
+        )
+    )
     markup.add(InlineKeyboardButton("⏭️ Skip", callback_data="admin_task_attach_no"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.send_message(message.chat.id, "Attach task files (PDF/DOC/DOCX) if available?", reply_markup=markup)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.send_message(
+        message.chat.id,
+        "Attach task files (PDF/DOC/DOCX) if available?",
+        reply_markup=markup,
+    )
 
 
 def handle_admin_task_attach_choice(bot, call: CallbackQuery) -> None:
@@ -1503,9 +1955,18 @@ def handle_admin_task_attach_choice(bot, call: CallbackQuery) -> None:
     if call.data == "admin_task_attach_yes":
         state["step"] = "admin_task_attach_files"
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("✅ Done uploading", callback_data="admin_task_attach_done"))
-        markup.add(InlineKeyboardButton("⏭️ Skip", callback_data="admin_task_attach_skip"))
-        markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+        markup.add(
+            InlineKeyboardButton(
+                "✅ Done uploading", callback_data="admin_task_attach_done"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton("⏭️ Skip", callback_data="admin_task_attach_skip")
+        )
+        markup.row(
+            InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+        )
         edit_or_send_message(
             bot,
             call.message.chat.id,
@@ -1524,16 +1985,31 @@ def handle_admin_task_attachment_file(bot, message: Message) -> None:
     if not state or state.get("step") != "admin_task_attach_files":
         return
     if not message.document:
-        bot.send_message(message.chat.id, "Please upload a document file (PDF/DOC/DOCX).")
+        bot.send_message(
+            message.chat.id, "Please upload a document file (PDF/DOC/DOCX)."
+        )
         return
     doc = message.document
     fname = (doc.file_name or "").lower()
-    allowed = fname.endswith(".pdf") or fname.endswith(".doc") or fname.endswith(".docx")
+    allowed = (
+        fname.endswith(".pdf") or fname.endswith(".doc") or fname.endswith(".docx")
+    )
     if not allowed:
-        bot.send_message(message.chat.id, "Only PDF/DOC/DOCX allowed for task attachments.")
+        bot.send_message(
+            message.chat.id, "Only PDF/DOC/DOCX allowed for task attachments."
+        )
         return
-    state["task"]["attachments"].append({"file_id": doc.file_id, "file_name": doc.file_name, "mime_type": doc.mime_type or "application/octet-stream"})
-    bot.send_message(message.chat.id, f"Attachment added ✅ ({len(state['task']['attachments'])} total)")
+    state["task"]["attachments"].append(
+        {
+            "file_id": doc.file_id,
+            "file_name": doc.file_name,
+            "mime_type": doc.mime_type or "application/octet-stream",
+        }
+    )
+    bot.send_message(
+        message.chat.id,
+        f"Attachment added ✅ ({len(state['task']['attachments'])} total)",
+    )
 
 
 def handle_admin_task_attachment_action(bot, call: CallbackQuery) -> None:
@@ -1545,12 +2021,31 @@ def handle_admin_task_attachment_action(bot, call: CallbackQuery) -> None:
     bot.answer_callback_query(call.id)
 
 
-def _send_assign_type_prompt(bot, chat_id: int, edit_message: Optional[Message] = None) -> None:
+def _send_assign_type_prompt(
+    bot, chat_id: int, edit_message: Optional[Message] = None
+) -> None:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🟦 Assign to Role", callback_data="admin_assign_type|role"))
-    markup.add(InlineKeyboardButton("✅ Assign to User(s)", callback_data="admin_assign_type|users"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, chat_id, "How do you want to assign this task?", reply_markup=markup, edit_message=edit_message)
+    markup.add(
+        InlineKeyboardButton(
+            "🟦 Assign to Role", callback_data="admin_assign_type|role"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "✅ Assign to User(s)", callback_data="admin_assign_type|users"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot,
+        chat_id,
+        "How do you want to assign this task?",
+        reply_markup=markup,
+        edit_message=edit_message,
+    )
 
 
 def handle_admin_assign_type(bot, call: CallbackQuery) -> None:
@@ -1564,9 +2059,22 @@ def handle_admin_assign_type(bot, call: CallbackQuery) -> None:
         for role in get_active_roles(include_admin=False):
             if role == "admin":
                 continue
-            markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_task_role|{role}"))
-        markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-        edit_or_send_message(bot, call.message.chat.id, "Select role:", reply_markup=markup, edit_message=call.message)
+            markup.add(
+                InlineKeyboardButton(
+                    role_label(role), callback_data=f"admin_task_role|{role}"
+                )
+            )
+        markup.row(
+            InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+        )
+        edit_or_send_message(
+            bot,
+            call.message.chat.id,
+            "Select role:",
+            reply_markup=markup,
+            edit_message=call.message,
+        )
     else:
         state["step"] = "admin_task_select_users"
         state["user_page"] = 0
@@ -1585,7 +2093,9 @@ def handle_admin_task_role(bot, call: CallbackQuery) -> None:
     bot.answer_callback_query(call.id)
 
 
-def _show_user_picker(bot, chat_id: int, state: Dict, edit_message: Optional[Message] = None) -> None:
+def _show_user_picker(
+    bot, chat_id: int, state: Dict, edit_message: Optional[Message] = None
+) -> None:
     page = state.get("user_page", 0)
     per_page = 6
     users = db.get_users_paginated(skip=page * per_page, limit=per_page)
@@ -1594,17 +2104,35 @@ def _show_user_picker(bot, chat_id: int, state: Dict, edit_message: Optional[Mes
     for u in users:
         uid = u["telegram_id"]
         mark = "✅" if uid in selected else "⬜"
-        markup.add(InlineKeyboardButton(f"{mark} {short_name(u)} ({role_label(u.get('role', ''))})", callback_data=f"admin_pick_user|{uid}"))
+        markup.add(
+            InlineKeyboardButton(
+                f"{mark} {short_name(u)} ({role_label(u.get('role', ''))})",
+                callback_data=f"admin_pick_user|{uid}",
+            )
+        )
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("Prev", callback_data=f"admin_user_page|{page - 1}"))
+        nav.append(
+            InlineKeyboardButton("Prev", callback_data=f"admin_user_page|{page - 1}")
+        )
     if len(users) == per_page:
-        nav.append(InlineKeyboardButton("Next", callback_data=f"admin_user_page|{page + 1}"))
+        nav.append(
+            InlineKeyboardButton("Next", callback_data=f"admin_user_page|{page + 1}")
+        )
     if nav:
         markup.row(*nav)
     markup.add(InlineKeyboardButton("✅ Done", callback_data="admin_users_done"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, chat_id, "Select user(s). Tap to toggle:", reply_markup=markup, edit_message=edit_message)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot,
+        chat_id,
+        "Select user(s). Tap to toggle:",
+        reply_markup=markup,
+        edit_message=edit_message,
+    )
 
 
 def handle_admin_user_page(bot, call: CallbackQuery) -> None:
@@ -1669,11 +2197,16 @@ def _finalize_task_creation(bot, admin_id: int, chat_id: int) -> None:
         for user in db.get_users_by_role(role):
             targets.add(user["telegram_id"])
 
-    notify_users(bot, list(targets), f"✅ New task: {task['title']}\nDeadline: {task['deadline']}")
+    notify_users(
+        bot,
+        list(targets),
+        f"✅ New task: {task['title']}\nDeadline: {task['deadline']}",
+    )
     bot.send_message(chat_id, "✅ Task assigned successfully.")
 
 
 # Admin review and score
+
 
 def _parse_triplet(data: str) -> Optional[Tuple[str, int]]:
     parts = data.split("|")
@@ -1689,7 +2222,9 @@ def handle_admin_review_menu(bot, source) -> None:
     if not require_profile_access_source(bot, source):
         return
     uid = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     if not is_admin(uid):
         if isinstance(source, CallbackQuery):
             bot.answer_callback_query(source.id, "Admin only")
@@ -1702,10 +2237,19 @@ def handle_admin_review_menu(bot, source) -> None:
 
 
 def _show_admin_review_page(bot, chat_id: int, page: int, edit_message) -> None:
-    items = [s for s in db.list_submissions() if s.get("status") in {config.TASK_STATUS_SUBMITTED, config.TASK_STATUS_ON_REVIEW}]
+    items = [
+        s
+        for s in db.list_submissions()
+        if s.get("status")
+        in {config.TASK_STATUS_SUBMITTED, config.TASK_STATUS_ON_REVIEW}
+    ]
     if not items:
         if edit_message:
-            bot.edit_message_text("No submissions waiting for review.", edit_message.chat.id, edit_message.message_id)
+            bot.edit_message_text(
+                "No submissions waiting for review.",
+                edit_message.chat.id,
+                edit_message.message_id,
+            )
         else:
             bot.send_message(chat_id, "No submissions waiting for review.")
         return
@@ -1720,20 +2264,37 @@ def _show_admin_review_page(bot, chat_id: int, page: int, edit_message) -> None:
         if not user or not task:
             continue
         submitted_at = s.get("submitted_at") or s.get("updated_at")
-        date_text = submitted_at.strftime("%Y-%m-%d") if hasattr(submitted_at, "strftime") else "N/A"
+        date_text = (
+            submitted_at.strftime("%Y-%m-%d")
+            if hasattr(submitted_at, "strftime")
+            else "N/A"
+        )
         label = f"📥 {date_text} | {short_name(user)} - {task.get('title', '')}"
-        markup.add(InlineKeyboardButton(label, callback_data=f"admin_review_item|{s['task_id']}|{s['user_id']}"))
+        markup.add(
+            InlineKeyboardButton(
+                label, callback_data=f"admin_review_item|{s['task_id']}|{s['user_id']}"
+            )
+        )
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("Prev", callback_data=f"admin_review_page|{page - 1}"))
+        nav.append(
+            InlineKeyboardButton("Prev", callback_data=f"admin_review_page|{page - 1}")
+        )
     if end < len(items):
-        nav.append(InlineKeyboardButton("Next", callback_data=f"admin_review_page|{page + 1}"))
+        nav.append(
+            InlineKeyboardButton("Next", callback_data=f"admin_review_page|{page + 1}")
+        )
     if nav:
         markup.row(*nav)
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
     text = f"Select submission (page {page + 1}):"
     if edit_message:
-        bot.edit_message_text(text, edit_message.chat.id, edit_message.message_id, reply_markup=markup)
+        bot.edit_message_text(
+            text, edit_message.chat.id, edit_message.message_id, reply_markup=markup
+        )
     else:
         bot.send_message(chat_id, text, reply_markup=markup)
 
@@ -1741,7 +2302,9 @@ def _show_admin_review_page(bot, chat_id: int, page: int, edit_message) -> None:
 def handle_admin_review_page(bot, call: CallbackQuery) -> None:
     _, raw_page = call.data.split("|", 1)
     page = max(0, int(raw_page))
-    _show_admin_review_page(bot, call.message.chat.id, page=page, edit_message=call.message)
+    _show_admin_review_page(
+        bot, call.message.chat.id, page=page, edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1769,13 +2332,39 @@ def handle_admin_review_item(bot, call: CallbackQuery) -> None:
         f"Status: {sub.get('status', '')}"
     )
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🟦 Mark On Review", callback_data=f"admin_mark_review|{task_id}|{user_id}"))
-    markup.add(InlineKeyboardButton("✅ Mark Done + Score", callback_data=f"admin_mark_done|{task_id}|{user_id}"))
-    markup.add(InlineKeyboardButton("📎 Send files to admin", callback_data=f"admin_send_sub_files|{task_id}|{user_id}"))
-    markup.add(InlineKeyboardButton("🗒️ Add note", callback_data=f"admin_add_sub_note|{task_id}|{user_id}"))
-    markup.add(InlineKeyboardButton("💬 Open thread", callback_data=f"thread_open|{task_id}|{user_id}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.add(
+        InlineKeyboardButton(
+            "🟦 Mark On Review", callback_data=f"admin_mark_review|{task_id}|{user_id}"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "✅ Mark Done + Score", callback_data=f"admin_mark_done|{task_id}|{user_id}"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "📎 Send files to admin",
+            callback_data=f"admin_send_sub_files|{task_id}|{user_id}",
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "🗒️ Add note", callback_data=f"admin_add_sub_note|{task_id}|{user_id}"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "💬 Open thread", callback_data=f"thread_open|{task_id}|{user_id}"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1794,9 +2383,17 @@ def handle_admin_send_submission_files(bot, call: CallbackQuery) -> None:
         mime = f.get("mime_type", "")
         try:
             if mime.startswith("image/"):
-                bot.send_photo(call.message.chat.id, f["file_id"], caption=f.get("file_name", "image"))
+                bot.send_photo(
+                    call.message.chat.id,
+                    f["file_id"],
+                    caption=f.get("file_name", "image"),
+                )
             else:
-                bot.send_document(call.message.chat.id, f["file_id"], caption=f.get("file_name", "file"))
+                bot.send_document(
+                    call.message.chat.id,
+                    f["file_id"],
+                    caption=f.get("file_name", "file"),
+                )
         except Exception:
             continue
 
@@ -1808,7 +2405,12 @@ def handle_admin_mark_review(bot, call: CallbackQuery) -> None:
         return
     task_id, user_id = parsed
     db.update_submission(task_id, user_id, {"status": config.TASK_STATUS_ON_REVIEW})
-    bot.edit_message_text("Submission moved to ON_REVIEW ✅", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_review_menu"))
+    bot.edit_message_text(
+        "Submission moved to ON_REVIEW ✅",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=navigation_markup(back="admin_review_menu"),
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1818,7 +2420,11 @@ def handle_admin_mark_done(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Invalid request")
         return
     task_id, user_id = parsed
-    registration_state[call.from_user.id] = {"step": "admin_score", "target_task_id": task_id, "target_user_id": user_id}
+    registration_state[call.from_user.id] = {
+        "step": "admin_score",
+        "target_task_id": task_id,
+        "target_user_id": user_id,
+    }
     edit_or_send_message(
         bot,
         call.message.chat.id,
@@ -1842,7 +2448,11 @@ def handle_admin_score(bot, message: Message) -> None:
         return
     state["score"] = score
     state["step"] = "admin_note"
-    bot.send_message(message.chat.id, "Add optional review note (or type '-') (example: Great structure, improve error handling):", reply_markup=navigation_markup(cancel=True))
+    bot.send_message(
+        message.chat.id,
+        "Add optional review note (or type '-') (example: Great structure, improve error handling):",
+        reply_markup=navigation_markup(cancel=True),
+    )
 
 
 def handle_admin_note(bot, message: Message) -> None:
@@ -1855,7 +2465,17 @@ def handle_admin_note(bot, message: Message) -> None:
     task_id = state["target_task_id"]
     user_id = state["target_user_id"]
     score = state["score"]
-    db.update_submission(task_id, user_id, {"status": config.TASK_STATUS_DONE, "review_score": score, "review_note": note, "reviewed_by": message.from_user.id, "reviewed_at": db.utcnow()})
+    db.update_submission(
+        task_id,
+        user_id,
+        {
+            "status": config.TASK_STATUS_DONE,
+            "review_score": score,
+            "review_note": note,
+            "reviewed_by": message.from_user.id,
+            "reviewed_at": db.utcnow(),
+        },
+    )
     db.increment_user_score(user_id, score)
     task = db.get_task(task_id)
     title = task.get("title", "task") if task else "task"
@@ -1875,8 +2495,16 @@ def handle_admin_add_submission_note_start(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Invalid request")
         return
     task_id, user_id = parsed
-    registration_state[call.from_user.id] = {"step": "admin_sub_note", "target_task_id": task_id, "target_user_id": user_id}
-    bot.send_message(call.message.chat.id, "Write note for this submission (example: Please add README screenshots):", reply_markup=navigation_markup(cancel=True))
+    registration_state[call.from_user.id] = {
+        "step": "admin_sub_note",
+        "target_task_id": task_id,
+        "target_user_id": user_id,
+    }
+    bot.send_message(
+        call.message.chat.id,
+        "Write note for this submission (example: Please add README screenshots):",
+        reply_markup=navigation_markup(cancel=True),
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -1892,7 +2520,9 @@ def handle_admin_add_submission_note_input(bot, message: Message) -> None:
     user_id = state["target_user_id"]
     sub = db.get_submission(task_id, user_id) or {}
     notes = sub.get("admin_notes", [])
-    notes.append({"admin_id": message.from_user.id, "note": note, "created_at": db.utcnow()})
+    notes.append(
+        {"admin_id": message.from_user.id, "note": note, "created_at": db.utcnow()}
+    )
     db.update_submission(task_id, user_id, {"admin_notes": notes})
     clear_state(message.from_user.id)
     bot.send_message(message.chat.id, "✅ Note saved.")
@@ -1900,38 +2530,89 @@ def handle_admin_add_submission_note_input(bot, message: Message) -> None:
 
 # Admin advanced tools
 
+
 def handle_admin_panel(bot, call: CallbackQuery) -> None:
     if not require_profile_access_callback(bot, call):
         return
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "Admin only")
         return
-    bot.edit_message_text("🛠️ Admin Panel", call.message.chat.id, call.message.message_id, reply_markup=admin_panel_markup())
+    bot.edit_message_text(
+        "🛠️ Admin Panel",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=admin_panel_markup(),
+    )
     bot.answer_callback_query(call.id)
 
 
 def _admin_category_markup(category: str) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
     if category == "tasks":
-        markup.add(InlineKeyboardButton("📝 Assign Task", callback_data="admin_assign_task"))
-        markup.add(InlineKeyboardButton("📥 Review Submissions", callback_data="admin_review_menu"))
-        markup.add(InlineKeyboardButton("💬 Task Threads", callback_data="admin_threads_menu"))
+        markup.add(
+            InlineKeyboardButton("📝 Assign Task", callback_data="admin_assign_task")
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "📥 Review Submissions", callback_data="admin_review_menu"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton("💬 Task Threads", callback_data="admin_threads_menu")
+        )
     elif category == "users":
-        markup.add(InlineKeyboardButton("✅ Add Intern", callback_data="admin_add_intern"))
-        markup.add(InlineKeyboardButton("👥 Manage Users", callback_data="admin_manage_users"))
-        markup.add(InlineKeyboardButton("🧩 Manage Roles", callback_data="admin_manage_roles"))
-        markup.add(InlineKeyboardButton("♻️ Restore Users", callback_data="admin_restore_users"))
+        markup.add(
+            InlineKeyboardButton("✅ Add Intern", callback_data="admin_add_intern")
+        )
+        markup.add(
+            InlineKeyboardButton("👥 Manage Users", callback_data="admin_manage_users")
+        )
+        markup.add(
+            InlineKeyboardButton("🧩 Manage Roles", callback_data="admin_manage_roles")
+        )
+        markup.add(
+            InlineKeyboardButton("♻️ Restore Users", callback_data="admin_restore_users")
+        )
     elif category == "settings":
-        markup.add(InlineKeyboardButton("📣 Broadcast", callback_data="admin_broadcast"))
-        markup.add(InlineKeyboardButton("📢 Force Subscribe", callback_data="admin_force_sub_menu"))
-        markup.add(InlineKeyboardButton("🛂 Profile Edit Controls", callback_data="admin_profile_edit_controls"))
-        markup.add(InlineKeyboardButton("📝 Registration Control", callback_data="admin_registration_control"))
+        markup.add(
+            InlineKeyboardButton("📣 Broadcast", callback_data="admin_broadcast")
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "📢 Force Subscribe", callback_data="admin_force_sub_menu"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "🛂 Profile Edit Controls", callback_data="admin_profile_edit_controls"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "📝 Registration Control", callback_data="admin_registration_control"
+            )
+        )
     elif category == "reports":
-        markup.add(InlineKeyboardButton("📈 Stats Overview", callback_data="admin_stats_overview"))
-        markup.add(InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard"))
-        markup.add(InlineKeyboardButton("📤 Export CSV", callback_data="admin_export_menu"))
-        markup.add(InlineKeyboardButton("🎯 Score Visibility", callback_data="admin_score_visibility"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                "📈 Stats Overview", callback_data="admin_stats_overview"
+            )
+        )
+        markup.add(
+            InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")
+        )
+        markup.add(
+            InlineKeyboardButton("📤 Export CSV", callback_data="admin_export_menu")
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "🎯 Score Visibility", callback_data="admin_score_visibility"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
     return markup
 
@@ -1961,7 +2642,12 @@ def handle_admin_stats_overview(bot, call: CallbackQuery) -> None:
         return
     users = db.list_users(include_banned=True)
     if not users:
-        bot.edit_message_text("No users available for stats.", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_panel"))
+        bot.edit_message_text(
+            "No users available for stats.",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=navigation_markup(back="admin_panel"),
+        )
         bot.answer_callback_query(call.id)
         return
 
@@ -1976,8 +2662,13 @@ def handle_admin_stats_overview(bot, call: CallbackQuery) -> None:
         if is_profile_complete(u):
             complete += 1
 
-    role_lines = [f"- {role_label(role)}: {count}" for role, count in sorted(role_counts.items(), key=lambda x: x[0])]
-    gender_lines = [f"- {g}: {c}" for g, c in sorted(gender_counts.items(), key=lambda x: x[0])]
+    role_lines = [
+        f"- {role_label(role)}: {count}"
+        for role, count in sorted(role_counts.items(), key=lambda x: x[0])
+    ]
+    gender_lines = [
+        f"- {g}: {c}" for g, c in sorted(gender_counts.items(), key=lambda x: x[0])
+    ]
     completion_rate = int((complete / len(users)) * 100)
     text = (
         "📈 Admin Stats\n"
@@ -1988,7 +2679,12 @@ def handle_admin_stats_overview(bot, call: CallbackQuery) -> None:
         "By gender:\n"
         f"{'\n'.join(gender_lines)}"
     )
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_cat_reports"))
+    bot.edit_message_text(
+        text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=navigation_markup(back="admin_cat_reports"),
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2004,15 +2700,30 @@ def handle_admin_profile_edit_controls(bot, call: CallbackQuery) -> None:
         f"Email editing: {'ON' if allow_email else 'OFF'}"
     )
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Toggle Name Editing", callback_data="admin_toggle_name_edit"))
-    markup.add(InlineKeyboardButton("Toggle Email Editing", callback_data="admin_toggle_email_edit"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton(
+            "Toggle Name Editing", callback_data="admin_toggle_name_edit"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Toggle Email Editing", callback_data="admin_toggle_email_edit"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
-def handle_admin_toggle_profile_edit_control(bot, call: CallbackQuery, key: str) -> None:
+def handle_admin_toggle_profile_edit_control(
+    bot, call: CallbackQuery, key: str
+) -> None:
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "Admin only")
         return
@@ -2064,27 +2775,45 @@ def handle_admin_manage_users(bot, call: CallbackQuery) -> None:
     bot.answer_callback_query(call.id)
 
 
-def _show_user_manage_page(bot, chat_id: int, page: int, edit_message: Optional[Message] = None) -> None:
+def _show_user_manage_page(
+    bot, chat_id: int, page: int, edit_message: Optional[Message] = None
+) -> None:
     per = 8
     users = db.get_users_paginated(skip=page * per, limit=per)
     markup = InlineKeyboardMarkup()
     for u in users:
         badge = "⛔" if u.get("is_banned") else "✅"
-        markup.add(InlineKeyboardButton(f"{badge} {short_name(u)} ({role_label(u.get('role', ''))})", callback_data=f"admin_user_view|{u['telegram_id']}"))
+        markup.add(
+            InlineKeyboardButton(
+                f"{badge} {short_name(u)} ({role_label(u.get('role', ''))})",
+                callback_data=f"admin_user_view|{u['telegram_id']}",
+            )
+        )
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("Prev", callback_data=f"admin_users_page|{page - 1}"))
+        nav.append(
+            InlineKeyboardButton("Prev", callback_data=f"admin_users_page|{page - 1}")
+        )
     if len(users) == per:
-        nav.append(InlineKeyboardButton("Next", callback_data=f"admin_users_page|{page + 1}"))
+        nav.append(
+            InlineKeyboardButton("Next", callback_data=f"admin_users_page|{page + 1}")
+        )
     if nav:
         markup.row(*nav)
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, chat_id, "👥 Manage users:", reply_markup=markup, edit_message=edit_message)
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot, chat_id, "👥 Manage users:", reply_markup=markup, edit_message=edit_message
+    )
 
 
 def handle_admin_users_page(bot, call: CallbackQuery) -> None:
     _, raw = call.data.split("|", 1)
-    _show_user_manage_page(bot, call.message.chat.id, max(0, int(raw)), edit_message=call.message)
+    _show_user_manage_page(
+        bot, call.message.chat.id, max(0, int(raw)), edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2103,13 +2832,26 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
     )
     markup = InlineKeyboardMarkup()
     if user.get("is_banned"):
-        markup.add(InlineKeyboardButton("✅ Unban", callback_data=f"admin_unban_user|{uid}"))
+        markup.add(
+            InlineKeyboardButton("✅ Unban", callback_data=f"admin_unban_user|{uid}")
+        )
     else:
-        markup.add(InlineKeyboardButton("⛔ Ban", callback_data=f"admin_ban_user|{uid}"))
-    markup.add(InlineKeyboardButton("🟦 Change Role", callback_data=f"admin_change_role|{uid}"))
-    markup.add(InlineKeyboardButton("❌ Remove User", callback_data=f"admin_remove_user|{uid}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_manage_users"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
-    edit_or_send_message(bot, call.message.chat.id, text, reply_markup=markup, edit_message=call.message)
+        markup.add(
+            InlineKeyboardButton("⛔ Ban", callback_data=f"admin_ban_user|{uid}")
+        )
+    markup.add(
+        InlineKeyboardButton("🟦 Change Role", callback_data=f"admin_change_role|{uid}")
+    )
+    markup.add(
+        InlineKeyboardButton("❌ Remove User", callback_data=f"admin_remove_user|{uid}")
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_manage_users"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
+    edit_or_send_message(
+        bot, call.message.chat.id, text, reply_markup=markup, edit_message=call.message
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2123,7 +2865,13 @@ def handle_admin_ban_toggle(bot, call: CallbackQuery, ban: bool) -> None:
         else:
             notify_users(bot, [uid], "✅ Your account access was restored by admin.")
     text = "✅ User updated." if ok else "Failed to update user."
-    edit_or_send_message(bot, call.message.chat.id, text, reply_markup=navigation_markup(back="admin_manage_users"), edit_message=call.message)
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        text,
+        reply_markup=navigation_markup(back="admin_manage_users"),
+        edit_message=call.message,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2132,7 +2880,12 @@ def handle_admin_remove_user(bot, call: CallbackQuery) -> None:
     uid = int(raw)
     if uid == call.from_user.id:
         bot.answer_callback_query(call.id)
-        edit_or_send_message(bot, call.message.chat.id, "You cannot remove yourself.", edit_message=call.message)
+        edit_or_send_message(
+            bot,
+            call.message.chat.id,
+            "You cannot remove yourself.",
+            edit_message=call.message,
+        )
         return
     ok = db.soft_delete_user(uid, deleted_by=call.from_user.id)
     edit_or_send_message(
@@ -2155,9 +2908,23 @@ def handle_admin_restore_users(bot, call: CallbackQuery) -> None:
         return
     markup = InlineKeyboardMarkup()
     for u in deleted:
-        markup.add(InlineKeyboardButton(f"♻️ Restore {short_name(u)}", callback_data=f"admin_restore_user|{u['telegram_id']}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, call.message.chat.id, "Deleted users:", reply_markup=markup, edit_message=call.message)
+        markup.add(
+            InlineKeyboardButton(
+                f"♻️ Restore {short_name(u)}",
+                callback_data=f"admin_restore_user|{u['telegram_id']}",
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        "Deleted users:",
+        reply_markup=markup,
+        edit_message=call.message,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2180,9 +2947,22 @@ def handle_admin_change_role(bot, call: CallbackQuery) -> None:
     uid = int(raw)
     markup = InlineKeyboardMarkup()
     for role in get_active_roles(include_admin=True):
-        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_set_role|{uid}|{role}"))
-    markup.row(InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"), InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    edit_or_send_message(bot, call.message.chat.id, "Select new role:", reply_markup=markup, edit_message=call.message)
+        markup.add(
+            InlineKeyboardButton(
+                role_label(role), callback_data=f"admin_set_role|{uid}|{role}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        "Select new role:",
+        reply_markup=markup,
+        edit_message=call.message,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2210,11 +2990,20 @@ def handle_admin_force_sub_menu(bot, call: CallbackQuery) -> None:
     cfg = db.get_global_setting("force_subscription", {"enabled": False, "channel": ""})
     text = f"📢 Force Subscription\nEnabled: {'Yes' if cfg.get('enabled') else 'No'}\nChannel: {cfg.get('channel') or 'Not set'}"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Set channel", callback_data="admin_force_set_channel"))
-    markup.add(InlineKeyboardButton("Toggle On/Off", callback_data="admin_force_toggle"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton("Set channel", callback_data="admin_force_set_channel")
+    )
+    markup.add(
+        InlineKeyboardButton("Toggle On/Off", callback_data="admin_force_toggle")
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2260,10 +3049,19 @@ def handle_admin_registration_menu(bot, call: CallbackQuery) -> None:
     is_open = is_registration_open()
     text = f"📝 Registration Control\nStatus: {'OPEN' if is_open else 'CLOSED'}"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Toggle Open/Closed", callback_data="admin_registration_toggle"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton(
+            "Toggle Open/Closed", callback_data="admin_registration_toggle"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2273,7 +3071,9 @@ def handle_admin_registration_toggle(bot, call: CallbackQuery) -> None:
         return
     current = is_registration_open()
     db.set_global_setting("registration_open", not current)
-    bot.answer_callback_query(call.id, f"Registration {'OPENED' if not current else 'CLOSED'}")
+    bot.answer_callback_query(
+        call.id, f"Registration {'OPENED' if not current else 'CLOSED'}"
+    )
     handle_admin_registration_menu(bot, call)
 
 
@@ -2289,7 +3089,9 @@ def handle_admin_reply_command(bot, message: Message) -> None:
 
     if is_admin(message.from_user.id) and message.reply_to_message:
         target_id = message.reply_to_message.from_user.id
-        if _send_contact_message(bot, message.from_user.id, target_id, payload, sender_is_admin=True):
+        if _send_contact_message(
+            bot, message.from_user.id, target_id, payload, sender_is_admin=True
+        ):
             bot.send_message(message.chat.id, "✅ Message sent.")
         else:
             bot.send_message(message.chat.id, "Failed to send message.")
@@ -2301,7 +3103,13 @@ def handle_admin_reply_command(bot, message: Message) -> None:
         return
     forwarded = 0
     for admin in admins:
-        if _send_contact_message(bot, message.from_user.id, admin["telegram_id"], payload, sender_is_admin=False):
+        if _send_contact_message(
+            bot,
+            message.from_user.id,
+            admin["telegram_id"],
+            payload,
+            sender_is_admin=False,
+        ):
             forwarded += 1
     if forwarded:
         bot.send_message(message.chat.id, "✅ Message sent to admin.")
@@ -2324,7 +3132,10 @@ def handle_contact_reply_start(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id)
         return
 
-    registration_state[call.from_user.id] = {"step": "contact_reply", "target_user_id": target_id}
+    registration_state[call.from_user.id] = {
+        "step": "contact_reply",
+        "target_user_id": target_id,
+    }
     edit_or_send_message(
         bot,
         call.message.chat.id,
@@ -2356,9 +3167,13 @@ def handle_contact_reply_input(bot, message: Message) -> None:
         bot.send_message(message.chat.id, "You can only reply to admins.")
         return
 
-    ok = _send_contact_message(bot, message.from_user.id, target_id, text, sender_is_admin=sender_is_admin)
+    ok = _send_contact_message(
+        bot, message.from_user.id, target_id, text, sender_is_admin=sender_is_admin
+    )
     clear_state(message.from_user.id)
-    bot.send_message(message.chat.id, "✅ Message sent." if ok else "Failed to send message.")
+    bot.send_message(
+        message.chat.id, "✅ Message sent." if ok else "Failed to send message."
+    )
 
 
 def handle_admin_manage_roles(bot, call: CallbackQuery) -> None:
@@ -2366,13 +3181,24 @@ def handle_admin_manage_roles(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Admin only")
         return
     roles = get_active_roles(include_admin=True)
-    text = "🧩 Manage Roles\nCurrent roles:\n" + "\n".join(f"- {role_label(r)} ({r})" for r in roles)
+    text = "🧩 Manage Roles\nCurrent roles:\n" + "\n".join(
+        f"- {role_label(r)} ({r})" for r in roles
+    )
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("➕ Add role", callback_data="admin_role_add_start"))
-    markup.add(InlineKeyboardButton("➖ Remove role", callback_data="admin_role_remove_menu"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton("➕ Add role", callback_data="admin_role_add_start")
+    )
+    markup.add(
+        InlineKeyboardButton("➖ Remove role", callback_data="admin_role_remove_menu")
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2394,7 +3220,9 @@ def handle_admin_role_add_name(bot, message: Message) -> None:
         return
     role = message.text.strip().lower().replace(" ", "_")
     if not role or not role.replace("_", "").isalnum():
-        bot.send_message(message.chat.id, "Invalid role key. Use letters/numbers/underscore.")
+        bot.send_message(
+            message.chat.id, "Invalid role key. Use letters/numbers/underscore."
+        )
         return
     ok = db.add_role(role)
     clear_state(message.from_user.id)
@@ -2405,17 +3233,31 @@ def handle_admin_role_remove_menu(bot, call: CallbackQuery) -> None:
     roles = get_active_roles(include_admin=False)
     markup = InlineKeyboardMarkup()
     for role in roles:
-        markup.add(InlineKeyboardButton(f"Remove {role_label(role)}", callback_data=f"admin_role_remove|{role}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_manage_roles"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                f"Remove {role_label(role)}", callback_data=f"admin_role_remove|{role}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_manage_roles"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("Select role to remove:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        "Select role to remove:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
 def handle_admin_role_remove(bot, call: CallbackQuery) -> None:
     _, role = call.data.split("|", 1)
     ok = db.remove_role(role)
-    bot.answer_callback_query(call.id, "Role removed" if ok else "Failed (admin role cannot be removed)")
+    bot.answer_callback_query(
+        call.id, "Role removed" if ok else "Failed (admin role cannot be removed)"
+    )
 
 
 def handle_admin_score_visibility_menu(bot, call: CallbackQuery) -> None:
@@ -2425,17 +3267,26 @@ def handle_admin_score_visibility_menu(bot, call: CallbackQuery) -> None:
     enabled = bool(db.get_global_setting("score_visibility", True))
     text = f"🎯 Score visibility for interns: {'ON' if enabled else 'OFF'}"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Toggle", callback_data="admin_score_visibility_toggle"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton("Toggle", callback_data="admin_score_visibility_toggle")
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
     bot.answer_callback_query(call.id)
 
 
 def handle_admin_score_visibility_toggle(bot, call: CallbackQuery) -> None:
     current = bool(db.get_global_setting("score_visibility", True))
     db.set_global_setting("score_visibility", not current)
-    bot.answer_callback_query(call.id, f"Score visibility {'ON' if not current else 'OFF'}")
+    bot.answer_callback_query(
+        call.id, f"Score visibility {'ON' if not current else 'OFF'}"
+    )
     handle_admin_score_visibility_menu(bot, call)
 
 
@@ -2451,28 +3302,59 @@ def _send_csv(bot, chat_id: int, filename: str, rows: List[List[str]]) -> None:
 
 def handle_admin_export_menu(bot, call: CallbackQuery) -> None:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Submissions CSV", callback_data="admin_export_submissions"))
-    markup.add(InlineKeyboardButton("Reminders CSV", callback_data="admin_export_reminders"))
-    markup.add(InlineKeyboardButton("Leaderboard CSV", callback_data="admin_export_leaderboard"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(
+        InlineKeyboardButton(
+            "Submissions CSV", callback_data="admin_export_submissions"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton("Reminders CSV", callback_data="admin_export_reminders")
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Leaderboard CSV", callback_data="admin_export_leaderboard"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_panel"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("📤 Select CSV export:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        "📤 Select CSV export:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
 def handle_admin_export_submissions(bot, call: CallbackQuery) -> None:
-    rows = [["task_id", "user_id", "status", "work_url", "demo_url", "importance", "files_count", "notes_count"]]
+    rows = [
+        [
+            "task_id",
+            "user_id",
+            "status",
+            "work_url",
+            "demo_url",
+            "importance",
+            "files_count",
+            "notes_count",
+        ]
+    ]
     for s in db.list_submissions():
-        rows.append([
-            str(s.get("task_id", "")),
-            str(s.get("user_id", "")),
-            str(s.get("status", "")),
-            str(s.get("work_url", "")),
-            str(s.get("demo_url", "")),
-            str(s.get("importance_rating", "")),
-            str(len(s.get("files", []))),
-            str(len(s.get("admin_notes", []))),
-        ])
+        rows.append(
+            [
+                str(s.get("task_id", "")),
+                str(s.get("user_id", "")),
+                str(s.get("status", "")),
+                str(s.get("work_url", "")),
+                str(s.get("demo_url", "")),
+                str(s.get("importance_rating", "")),
+                str(len(s.get("files", []))),
+                str(len(s.get("admin_notes", []))),
+            ]
+        )
     _send_csv(bot, call.message.chat.id, "submissions.csv", rows)
     bot.answer_callback_query(call.id)
 
@@ -2481,12 +3363,14 @@ def handle_admin_export_reminders(bot, call: CallbackQuery) -> None:
     rows = [["telegram_id", "name", "reminders_enabled", "reminder_hours"]]
     for user in db.list_users(include_banned=True):
         pref = db.get_user_pref(user["telegram_id"])
-        rows.append([
-            str(user.get("telegram_id", "")),
-            short_name(user),
-            str(pref.get("reminders_enabled", True)),
-            ";".join(str(h) for h in pref.get("reminder_hours", [24, 2])),
-        ])
+        rows.append(
+            [
+                str(user.get("telegram_id", "")),
+                short_name(user),
+                str(pref.get("reminders_enabled", True)),
+                ";".join(str(h) for h in pref.get("reminder_hours", [24, 2])),
+            ]
+        )
     _send_csv(bot, call.message.chat.id, "reminders.csv", rows)
     bot.answer_callback_query(call.id)
 
@@ -2495,13 +3379,15 @@ def handle_admin_export_leaderboard(bot, call: CallbackQuery) -> None:
     rows = [["rank", "telegram_id", "name", "role", "score"]]
     rank = 1
     for user in db.get_leaderboard(limit=1000):
-        rows.append([
-            str(rank),
-            str(user.get("telegram_id", "")),
-            short_name(user),
-            role_label(user.get("role", "")),
-            str(user.get("score", 0)),
-        ])
+        rows.append(
+            [
+                str(rank),
+                str(user.get("telegram_id", "")),
+                short_name(user),
+                role_label(user.get("role", "")),
+                str(user.get("score", 0)),
+            ]
+        )
         rank += 1
     _send_csv(bot, call.message.chat.id, "leaderboard.csv", rows)
     bot.answer_callback_query(call.id)
@@ -2509,17 +3395,32 @@ def handle_admin_export_leaderboard(bot, call: CallbackQuery) -> None:
 
 # Leaderboard
 
+
 def handle_admin_leaderboard(bot, call: CallbackQuery) -> None:
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "Admin only")
         return
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("All roles", callback_data="admin_leaderboard_role|all"))
+    markup.add(
+        InlineKeyboardButton("All roles", callback_data="admin_leaderboard_role|all")
+    )
     for role in get_active_roles(include_admin=False):
-        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_leaderboard_role|{role}"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+        markup.add(
+            InlineKeyboardButton(
+                role_label(role), callback_data=f"admin_leaderboard_role|{role}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("🏆 Leaderboard\nChoose a role filter:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        "🏆 Leaderboard\nChoose a role filter:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)
 
 
@@ -2535,7 +3436,12 @@ def handle_admin_leaderboard_filter(bot, call: CallbackQuery) -> None:
     board = db.get_leaderboard(role=role, limit=20)
     if not board:
         label = role_label(role) if role else "All roles"
-        bot.edit_message_text(f"Leaderboard is empty for {label}.", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_leaderboard"))
+        bot.edit_message_text(
+            f"Leaderboard is empty for {label}.",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=navigation_markup(back="admin_leaderboard"),
+        )
         bot.answer_callback_query(call.id)
         return
 
@@ -2543,12 +3449,22 @@ def handle_admin_leaderboard_filter(bot, call: CallbackQuery) -> None:
     lines = [f"🏆 Leaderboard ({label})"]
     i = 1
     for u in board:
-        lines.append(f"{i}. {short_name(u)} ({role_label(u.get('role', ''))}) - {u.get('score', 0)}")
+        lines.append(
+            f"{i}. {short_name(u)} ({role_label(u.get('role', ''))}) - {u.get('score', 0)}"
+        )
         i += 1
 
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Change Filter", callback_data="admin_leaderboard"))
-    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
-    bot.edit_message_text("\n".join(lines), call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text(
+        "\n".join(lines),
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
     bot.answer_callback_query(call.id)

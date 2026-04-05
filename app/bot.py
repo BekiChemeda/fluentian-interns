@@ -165,7 +165,9 @@ def reminder_loop() -> None:
                 if not deadline_raw:
                     continue
                 try:
-                    deadline = datetime.strptime(deadline_raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    deadline = datetime.strptime(deadline_raw, "%Y-%m-%d").replace(
+                        tzinfo=timezone.utc
+                    )
                 except ValueError:
                     continue
                 delta_hours = (deadline - now).total_seconds() / 3600.0
@@ -185,8 +187,13 @@ def reminder_loop() -> None:
                     if not pref.get("reminders_enabled", True):
                         continue
                     for h in pref.get("reminder_hours", [24, 2]):
-                        if abs(delta_hours - h) <= 0.5 and _should_send_reminder(task, uid, h):
-                            bot.send_message(uid, f"⏰ Reminder: '{task.get('title', 'Task')}' is due in about {h} hour(s).")
+                        if abs(delta_hours - h) <= 0.5 and _should_send_reminder(
+                            task, uid, h
+                        ):
+                            bot.send_message(
+                                uid,
+                                f"⏰ Reminder: '{task.get('title', 'Task')}' is due in about {h} hour(s).",
+                            )
                             _mark_reminder_sent(task["_id"], uid, h)
         except Exception:
             pass
@@ -248,152 +255,239 @@ def broadcast_cmd(message: Message):
 
 
 # state messages
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "email")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "email"
+)
 def email_step(message: Message):
     handle_email(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "reg_first_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "reg_first_name"
+)
 def reg_first_name_step(message: Message):
     handle_register_first_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "reg_last_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "reg_last_name"
+)
 def reg_last_name_step(message: Message):
     handle_register_last_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "reg_email")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "reg_email"
+)
 def reg_email_step(message: Message):
     handle_register_email(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "first_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "first_name"
+)
 def first_name_step(message: Message):
     handle_first_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "last_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "last_name"
+)
 def last_name_step(message: Message):
     handle_last_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_work_url")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_work_url"
+)
 def submit_work_url_step(message: Message):
     handle_submit_work_url(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_demo_url")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_demo_url"
+)
 def submit_demo_url_step(message: Message):
     handle_submit_demo_url(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_learned")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_learned"
+)
 def submit_learned_step(message: Message):
     handle_submit_learned(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_importance")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_importance"
+)
 def submit_importance_step(message: Message):
     handle_submit_importance(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_drive_link")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_drive_link"
+)
 def submit_drive_link_step(message: Message):
     handle_submit_drive_link(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_custom_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_custom_name"
+)
 def submit_custom_name_step(message: Message):
     handle_submit_custom_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "submit_custom_value")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "submit_custom_value"
+)
 def submit_custom_value_step(message: Message):
     handle_submit_custom_value(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_add_email")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_add_email"
+)
 def admin_add_email_step(message: Message):
     handle_admin_add_email(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_title")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_task_title"
+)
 def admin_task_title_step(message: Message):
     handle_admin_task_title(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_description")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_task_description"
+)
 def admin_task_description_step(message: Message):
     handle_admin_task_description(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_task_deadline")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_task_deadline"
+)
 def admin_task_deadline_step(message: Message):
     handle_admin_task_deadline(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_score")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_score"
+)
 def admin_score_step(message: Message):
     handle_admin_score(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_note")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_note"
+)
 def admin_note_step(message: Message):
     handle_admin_note(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_sub_note")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_sub_note"
+)
 def admin_sub_note_step(message: Message):
     handle_admin_add_submission_note_input(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_broadcast")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_broadcast"
+)
 def admin_broadcast_step(message: Message):
     handle_admin_broadcast_message(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "notif_hours")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "notif_hours"
+)
 def notif_hours_step(message: Message):
     handle_notif_hours_input(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_set_channel")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_set_channel"
+)
 def admin_set_channel_step(message: Message):
     handle_admin_set_channel_input(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "admin_role_add_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "admin_role_add_name"
+)
 def admin_role_add_name_step(message: Message):
     handle_admin_role_add_name(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "thread_message")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "thread_message"
+)
 def thread_message_step(message: Message):
     handle_thread_message_input(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "contact_reply")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "contact_reply"
+)
 def contact_reply_step(message: Message):
     handle_contact_reply_input(bot, message)
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_first_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_edit_first_name"
+)
 def profile_edit_first_name_step(message: Message):
     handle_profile_edit_name_or_email_input(bot, message, "first_name")
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_last_name")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_edit_last_name"
+)
 def profile_edit_last_name_step(message: Message):
     handle_profile_edit_name_or_email_input(bot, message, "last_name")
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_email")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_edit_email"
+)
 def profile_edit_email_step(message: Message):
     handle_profile_edit_name_or_email_input(bot, message, "email")
 
 
-@bot.message_handler(func=lambda m: registration_state.get(m.from_user.id, {}).get("step") == "profile_edit_current_city")
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_edit_current_city"
+)
 def profile_edit_current_city_step(message: Message):
     handle_profile_edit_city_input(bot, message)
 
@@ -432,7 +526,9 @@ def help_contact_admin_callback(call: CallbackQuery):
             call.message.message_id,
         )
     except Exception:
-        bot.send_message(call.message.chat.id, "Use /admin your message to contact admin.")
+        bot.send_message(
+            call.message.chat.id, "Use /admin your message to contact admin."
+        )
     bot.answer_callback_query(call.id)
 
 
@@ -456,22 +552,30 @@ def profile_pick_gender_callback(call: CallbackQuery):
     handle_profile_pick_gender(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_pick_nationality|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_pick_nationality|")
+)
 def profile_pick_nationality_callback(call: CallbackQuery):
     handle_profile_pick_nationality(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_nationality_page|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_nationality_page|")
+)
 def profile_pick_nationality_page_callback(call: CallbackQuery):
     handle_profile_pick_nationality_page(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_pick_country|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_pick_country|")
+)
 def profile_pick_country_callback(call: CallbackQuery):
     handle_profile_pick_country(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_country_page|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_country_page|")
+)
 def profile_pick_country_page_callback(call: CallbackQuery):
     handle_profile_pick_country_page(bot, call)
 
@@ -481,7 +585,9 @@ def profile_pick_city_callback(call: CallbackQuery):
     handle_profile_pick_city(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_city_page|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_city_page|")
+)
 def profile_pick_city_page_callback(call: CallbackQuery):
     handle_profile_pick_city_page(bot, call)
 
@@ -491,22 +597,30 @@ def profile_pick_language_callback(call: CallbackQuery):
     handle_profile_pick_language(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "profile_pick_language_level")
+@bot.callback_query_handler(
+    func=lambda call: call.data == "profile_pick_language_level"
+)
 def profile_pick_language_level_callback(call: CallbackQuery):
     handle_profile_pick_language_level(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_gender|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_gender|")
+)
 def profile_set_gender_callback(call: CallbackQuery):
     handle_profile_set_gender(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_nationality|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_nationality|")
+)
 def profile_set_nationality_callback(call: CallbackQuery):
     handle_profile_set_nationality(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_country|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_country|")
+)
 def profile_set_country_callback(call: CallbackQuery):
     handle_profile_set_country(bot, call)
 
@@ -516,12 +630,16 @@ def profile_set_city_callback(call: CallbackQuery):
     handle_profile_set_city(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_language|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_language|")
+)
 def profile_set_language_callback(call: CallbackQuery):
     handle_profile_set_language(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_set_language_level|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("profile_set_language_level|")
+)
 def profile_set_language_level_callback(call: CallbackQuery):
     handle_profile_set_language_level(bot, call)
 
@@ -616,22 +734,30 @@ def reg_decline_callback(call: CallbackQuery):
     handle_registration_approval(bot, call, False)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"submit_deployed_yes", "submit_deployed_no"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"submit_deployed_yes", "submit_deployed_no"}
+)
 def submit_deployed_callback(call: CallbackQuery):
     handle_submit_deployed_choice(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"submit_custom_yes", "submit_custom_no"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"submit_custom_yes", "submit_custom_no"}
+)
 def submit_custom_callback(call: CallbackQuery):
     handle_submit_custom_choice(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"submit_assets_yes", "submit_assets_no"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"submit_assets_yes", "submit_assets_no"}
+)
 def submit_assets_callback(call: CallbackQuery):
     handle_submit_assets_choice(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"submit_files_done", "submit_files_skip"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"submit_files_done", "submit_files_skip"}
+)
 def submit_files_callback(call: CallbackQuery):
     handle_submit_files_action(bot, call)
 
@@ -666,7 +792,9 @@ def admin_stats_overview_callback(call: CallbackQuery):
     handle_admin_stats_overview(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "admin_profile_edit_controls")
+@bot.callback_query_handler(
+    func=lambda call: call.data == "admin_profile_edit_controls"
+)
 def admin_profile_edit_controls_callback(call: CallbackQuery):
     handle_admin_profile_edit_controls(bot, call)
 
@@ -696,17 +824,23 @@ def admin_assign_task_callback(call: CallbackQuery):
     handle_admin_assign_task(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"admin_task_attach_yes", "admin_task_attach_no"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"admin_task_attach_yes", "admin_task_attach_no"}
+)
 def admin_task_attach_choice_callback(call: CallbackQuery):
     handle_admin_task_attach_choice(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data in {"admin_task_attach_done", "admin_task_attach_skip"})
+@bot.callback_query_handler(
+    func=lambda call: call.data in {"admin_task_attach_done", "admin_task_attach_skip"}
+)
 def admin_task_attach_action_callback(call: CallbackQuery):
     handle_admin_task_attachment_action(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_assign_type|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_assign_type|")
+)
 def admin_assign_type_callback(call: CallbackQuery):
     handle_admin_assign_type(bot, call)
 
@@ -736,22 +870,30 @@ def admin_review_menu_callback(call: CallbackQuery):
     handle_admin_review_menu(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_review_page|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_review_page|")
+)
 def admin_review_page_callback(call: CallbackQuery):
     handle_admin_review_page(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_review_item|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_review_item|")
+)
 def admin_review_item_callback(call: CallbackQuery):
     handle_admin_review_item(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_send_sub_files|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_send_sub_files|")
+)
 def admin_send_sub_files_callback(call: CallbackQuery):
     handle_admin_send_submission_files(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_mark_review|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_mark_review|")
+)
 def admin_mark_review_callback(call: CallbackQuery):
     handle_admin_mark_review(bot, call)
 
@@ -761,7 +903,9 @@ def admin_mark_done_callback(call: CallbackQuery):
     handle_admin_mark_done(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_add_sub_note|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_add_sub_note|")
+)
 def admin_add_sub_note_callback(call: CallbackQuery):
     handle_admin_add_submission_note_start(bot, call)
 
@@ -796,7 +940,9 @@ def admin_role_remove_menu_callback(call: CallbackQuery):
     handle_admin_role_remove_menu(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_role_remove|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_role_remove|")
+)
 def admin_role_remove_callback(call: CallbackQuery):
     handle_admin_role_remove(bot, call)
 
@@ -821,7 +967,9 @@ def admin_unban_user_callback(call: CallbackQuery):
     handle_admin_ban_toggle(bot, call, False)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_remove_user|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_remove_user|")
+)
 def admin_remove_user_callback(call: CallbackQuery):
     handle_admin_remove_user(bot, call)
 
@@ -831,12 +979,16 @@ def admin_restore_users_callback(call: CallbackQuery):
     handle_admin_restore_users(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_restore_user|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_restore_user|")
+)
 def admin_restore_user_callback(call: CallbackQuery):
     handle_admin_restore_user(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_change_role|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_change_role|")
+)
 def admin_change_role_callback(call: CallbackQuery):
     handle_admin_change_role(bot, call)
 
@@ -876,7 +1028,9 @@ def admin_leaderboard_callback(call: CallbackQuery):
     handle_admin_leaderboard(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_leaderboard_role|"))
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_leaderboard_role|")
+)
 def admin_leaderboard_role_callback(call: CallbackQuery):
     handle_admin_leaderboard_filter(bot, call)
 
@@ -906,7 +1060,9 @@ def admin_score_visibility_callback(call: CallbackQuery):
     handle_admin_score_visibility_menu(bot, call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "admin_score_visibility_toggle")
+@bot.callback_query_handler(
+    func=lambda call: call.data == "admin_score_visibility_toggle"
+)
 def admin_score_visibility_toggle_callback(call: CallbackQuery):
     handle_admin_score_visibility_toggle(bot, call)
 
