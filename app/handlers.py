@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from telebot.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -16,7 +15,6 @@ from app.africa_data import AFRICAN_COUNTRIES, GENDER_OPTIONS, LANGUAGE_LEVEL_OP
 from app import config, db, utils
 
 registration_state: Dict[int, Dict] = {}
-REGISTER_DEADLINE = datetime(2026, 4, 3, 23, 59, 59, tzinfo=timezone.utc)
 REQUIRED_PROFILE_FIELDS = ["gender", "nationality", "current_country", "current_city", "country_language", "language_level"]
 
 
@@ -34,6 +32,10 @@ def is_admin(telegram_id: int) -> bool:
 
 def role_label(role: str) -> str:
     return config.ROLE_DISPLAY.get(role, role.replace("_", " ").title())
+
+
+def is_registration_open() -> bool:
+    return bool(db.get_global_setting("registration_open", True))
 
 
 def short_name(user: Dict) -> str:
@@ -284,12 +286,13 @@ def handle_start(bot, message: Message) -> None:
         show_dashboard(bot, message.from_user.id, message.chat.id)
         return
     markup = InlineKeyboardMarkup()
-    if db.utcnow() <= REGISTER_DEADLINE:
+    if is_registration_open():
         markup.add(InlineKeyboardButton("🟢 Register", callback_data="start_register"))
     markup.add(InlineKeyboardButton("📩 Contact Admin", callback_data="help_contact_admin"))
+    status_line = "Registration is currently open." if is_registration_open() else "Registration is currently closed by admin."
     bot.send_message(
         message.chat.id,
-        "Welcome. Use /register (or button) to apply. Registration closes on April 3, 2026.",
+        f"Welcome. Use /register (or button) to apply when registration is open.\n{status_line}",
         reply_markup=markup,
     )
 
@@ -298,8 +301,8 @@ def handle_register_start(bot, source) -> None:
     user_id = source.from_user.id
     chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
     edit_message = source.message if isinstance(source, CallbackQuery) else None
-    if db.utcnow() > REGISTER_DEADLINE:
-        edit_or_send_message(bot, chat_id, "Registration is closed. Contact admin with /admin your message.", edit_message=edit_message)
+    if not is_registration_open():
+        edit_or_send_message(bot, chat_id, "Registration is currently closed by admin. Contact admin with /admin your message.", edit_message=edit_message)
         if isinstance(source, CallbackQuery):
             bot.answer_callback_query(source.id)
         return
@@ -1856,7 +1859,12 @@ def handle_admin_note(bot, message: Message) -> None:
     db.increment_user_score(user_id, score)
     task = db.get_task(task_id)
     title = task.get("title", "task") if task else "task"
-    notify_users(bot, [user_id], f"✅ Your submission for '{title}' was reviewed. Score: {score}\nNote: {note or 'No note'}")
+    score_visible = bool(db.get_global_setting("score_visibility", True))
+    review_msg = f"✅ Your submission for '{title}' was reviewed."
+    if score_visible:
+        review_msg += f" Score: {score}"
+    review_msg += f"\nNote: {note or 'No note'}"
+    notify_users(bot, [user_id], review_msg)
     clear_state(message.from_user.id)
     bot.send_message(message.chat.id, "Submission marked done ✅")
 
@@ -1917,6 +1925,7 @@ def _admin_category_markup(category: str) -> InlineKeyboardMarkup:
         markup.add(InlineKeyboardButton("📣 Broadcast", callback_data="admin_broadcast"))
         markup.add(InlineKeyboardButton("📢 Force Subscribe", callback_data="admin_force_sub_menu"))
         markup.add(InlineKeyboardButton("🛂 Profile Edit Controls", callback_data="admin_profile_edit_controls"))
+        markup.add(InlineKeyboardButton("📝 Registration Control", callback_data="admin_registration_control"))
     elif category == "reports":
         markup.add(InlineKeyboardButton("📈 Stats Overview", callback_data="admin_stats_overview"))
         markup.add(InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard"))
@@ -2244,6 +2253,30 @@ def handle_admin_force_toggle(bot, call: CallbackQuery) -> None:
     handle_admin_force_sub_menu(bot, call)
 
 
+def handle_admin_registration_menu(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    is_open = is_registration_open()
+    text = f"📝 Registration Control\nStatus: {'OPEN' if is_open else 'CLOSED'}"
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Toggle Open/Closed", callback_data="admin_registration_toggle"))
+    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_settings"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_registration_toggle(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    current = is_registration_open()
+    db.set_global_setting("registration_open", not current)
+    bot.answer_callback_query(call.id, f"Registration {'OPENED' if not current else 'CLOSED'}")
+    handle_admin_registration_menu(bot, call)
+
+
 def handle_admin_reply_command(bot, message: Message) -> None:
     if not require_profile_access_source(bot, message):
         return
@@ -2480,17 +2513,42 @@ def handle_admin_leaderboard(bot, call: CallbackQuery) -> None:
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "Admin only")
         return
-    board = db.get_leaderboard(limit=20)
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("All roles", callback_data="admin_leaderboard_role|all"))
+    for role in get_active_roles(include_admin=False):
+        markup.add(InlineKeyboardButton(role_label(role), callback_data=f"admin_leaderboard_role|{role}"))
+    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    bot.edit_message_text("🏆 Leaderboard\nChoose a role filter:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_leaderboard_filter(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    parts = call.data.split("|", 1)
+    role = None
+    if len(parts) == 2 and parts[1] != "all":
+        role = parts[1]
+
+    board = db.get_leaderboard(role=role, limit=20)
     if not board:
-        bot.edit_message_text("Leaderboard is empty.", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_panel"))
+        label = role_label(role) if role else "All roles"
+        bot.edit_message_text(f"Leaderboard is empty for {label}.", call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_leaderboard"))
         bot.answer_callback_query(call.id)
         return
-    lines = ["🏆 Leaderboard"]
+
+    label = role_label(role) if role else "All roles"
+    lines = [f"🏆 Leaderboard ({label})"]
     i = 1
-    show_scores = bool(db.get_global_setting("score_visibility", True))
     for u in board:
-        suffix = f" - {u.get('score', 0)}" if show_scores else ""
-        lines.append(f"{i}. {short_name(u)} ({role_label(u.get('role', ''))}){suffix}")
+        lines.append(f"{i}. {short_name(u)} ({role_label(u.get('role', ''))}) - {u.get('score', 0)}")
         i += 1
-    bot.edit_message_text("\n".join(lines), call.message.chat.id, call.message.message_id, reply_markup=navigation_markup(back="admin_panel"))
+
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Change Filter", callback_data="admin_leaderboard"))
+    markup.row(InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_reports"), InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"))
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    bot.edit_message_text("\n".join(lines), call.message.chat.id, call.message.message_id, reply_markup=markup)
     bot.answer_callback_query(call.id)

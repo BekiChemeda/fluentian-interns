@@ -26,7 +26,10 @@ from app.handlers import (
     handle_admin_force_set_channel,
     handle_admin_force_sub_menu,
     handle_admin_force_toggle,
+    handle_admin_registration_menu,
+    handle_admin_registration_toggle,
     handle_admin_leaderboard,
+    handle_admin_leaderboard_filter,
     handle_admin_manage_users,
     handle_admin_mark_done,
     handle_admin_mark_review,
@@ -858,9 +861,24 @@ def admin_force_toggle_callback(call: CallbackQuery):
     handle_admin_force_toggle(bot, call)
 
 
+@bot.callback_query_handler(func=lambda call: call.data == "admin_registration_control")
+def admin_registration_control_callback(call: CallbackQuery):
+    handle_admin_registration_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_registration_toggle")
+def admin_registration_toggle_callback(call: CallbackQuery):
+    handle_admin_registration_toggle(bot, call)
+
+
 @bot.callback_query_handler(func=lambda call: call.data == "admin_leaderboard")
 def admin_leaderboard_callback(call: CallbackQuery):
     handle_admin_leaderboard(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_leaderboard_role|"))
+def admin_leaderboard_role_callback(call: CallbackQuery):
+    handle_admin_leaderboard_filter(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_export_menu")
