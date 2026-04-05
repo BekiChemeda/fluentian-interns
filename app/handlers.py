@@ -220,7 +220,7 @@ def _contact_reply_markup(target_user_id: int) -> InlineKeyboardMarkup:
 def _build_dashboard_text(user: Dict) -> str:
     score_visible = bool(db.get_global_setting("score_visibility", True))
     text = f"✅ Welcome, {short_name(user)}\nRole: {role_label(user.get('role', ''))}"
-    if score_visible or user.get("role") == "admin":
+    if score_visible:
         text += f"\nScore: {user.get('score', 0)}"
     return text
 
@@ -782,7 +782,7 @@ def handle_profile(bot, call: CallbackQuery) -> None:
         f"Language Level: {user.get('language_level') or 'Not set'}\n"
         f"Profile Completion: {profile_completion_percent(user)}%"
     )
-    if score_visible or user.get("role") == "admin":
+    if score_visible:
         text += f"\nScore: {user.get('score', 0)}"
     if not complete:
         text += "\n\n⚠️ Complete missing profile details to access all features."
@@ -2760,7 +2760,9 @@ def handle_admin_toggle_profile_edit_control(
 
 def handle_admin_broadcast_start(bot, source) -> None:
     user_id = source.from_user.id
-    chat_id = source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    chat_id = (
+        source.message.chat.id if isinstance(source, CallbackQuery) else source.chat.id
+    )
     edit_message = source.message if isinstance(source, CallbackQuery) else None
 
     if not is_admin(user_id):
