@@ -3567,14 +3567,12 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "User not found")
         return
     username = (user.get("username") or "").strip()
-    mention_label = f"@{username}" if username else short_name(user)
+    username_line = f"@{username}" if username else "N/A"
     text = (
-        f"👤 {mention_label}\n"
+        f"👤 {short_name(user)}\n"
         f"Name: {short_name(user)}\n"
         f"Telegram ID: {user.get('telegram_id', '')}\n"
-        f"Username: @{username}"
-        if username
-        else "Username: N/A" + "\n"
+        f"Username: {username_line}\n"
         f"Email: {user.get('email', '')}\n"
         f"Role: {role_label(user.get('role', ''))}\n"
         f"Banned: {'Yes' if user.get('is_banned') else 'No'}"
