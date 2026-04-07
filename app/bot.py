@@ -61,6 +61,9 @@ from app.handlers import (
     handle_admin_review_item,
     handle_admin_review_menu,
     handle_admin_review_page,
+    handle_admin_reviewed_scored_menu,
+    handle_admin_reviewed_scored_page,
+    handle_admin_reviewed_scored_role,
     handle_admin_score,
     handle_admin_send_submission_files,
     handle_admin_set_channel_input,
@@ -936,6 +939,25 @@ def admin_users_done_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_review_menu")
 def admin_review_menu_callback(call: CallbackQuery):
     handle_admin_review_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reviewed_scored_menu")
+def admin_reviewed_scored_menu_callback(call: CallbackQuery):
+    handle_admin_reviewed_scored_menu(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_reviewed_role|")
+)
+def admin_reviewed_scored_role_callback(call: CallbackQuery):
+    handle_admin_reviewed_scored_role(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_reviewed_page|")
+)
+def admin_reviewed_scored_page_callback(call: CallbackQuery):
+    handle_admin_reviewed_scored_page(bot, call)
 
 
 @bot.callback_query_handler(

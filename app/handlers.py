@@ -2744,6 +2744,11 @@ def _admin_category_markup(category: str) -> InlineKeyboardMarkup:
             )
         )
         markup.add(
+            InlineKeyboardButton(
+                "🗂 Reviewed/Scored", callback_data="admin_reviewed_scored_menu"
+            )
+        )
+        markup.add(
             InlineKeyboardButton("💬 Task Threads", callback_data="admin_threads_menu")
         )
     elif category == "users":
@@ -2818,6 +2823,153 @@ def handle_admin_category(bot, call: CallbackQuery, category: str) -> None:
         call.message.chat.id,
         call.message.message_id,
         reply_markup=_admin_category_markup(category),
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_reviewed_scored_menu(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("All roles", callback_data="admin_reviewed_role|all")
+    )
+    for role in get_active_roles(include_admin=False):
+        markup.add(
+            InlineKeyboardButton(
+                role_label(role), callback_data=f"admin_reviewed_role|{role}"
+            )
+        )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_cat_tasks"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    bot.edit_message_text(
+        "Select role to filter reviewed/scored submissions:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+    )
+    bot.answer_callback_query(call.id)
+
+
+def _show_admin_reviewed_scored_page(
+    bot,
+    chat_id: int,
+    role: Optional[str],
+    page: int,
+    edit_message: Optional[Message] = None,
+) -> None:
+    entries = []
+    for submission in db.list_submissions():
+        status = submission.get("status")
+        if status not in {config.TASK_STATUS_ON_REVIEW, config.TASK_STATUS_DONE}:
+            continue
+        user = db.get_user(submission.get("user_id"))
+        task = db.get_task(submission.get("task_id"))
+        if not user or not task:
+            continue
+        if role and user.get("role") != role:
+            continue
+        entries.append((submission, user, task))
+
+    if not entries:
+        role_label_text = role_label(role) if role else "All roles"
+        edit_or_send_message(
+            bot,
+            chat_id,
+            f"No reviewed/scored submissions for {role_label_text}.",
+            reply_markup=navigation_markup(back="admin_reviewed_scored_menu"),
+            edit_message=edit_message,
+        )
+        return
+
+    per_page = 8
+    start = page * per_page
+    end = start + per_page
+    page_entries = entries[start:end]
+
+    role_key = role or "all"
+    role_label_text = role_label(role) if role else "All roles"
+
+    markup = InlineKeyboardMarkup()
+    for submission, user, task in page_entries:
+        score_val = submission.get("review_score")
+        score_text = f" | score:{score_val}" if score_val is not None else ""
+        label = (
+            f"{submission.get('status', '')} | {short_name(user)}"
+            f" - {task.get('title', '')}{score_text}"
+        )
+        markup.add(
+            InlineKeyboardButton(
+                label,
+                callback_data=f"admin_review_item|{submission['task_id']}|{submission['user_id']}",
+            )
+        )
+
+    nav = []
+    if page > 0:
+        nav.append(
+            InlineKeyboardButton(
+                "Prev", callback_data=f"admin_reviewed_page|{role_key}|{page - 1}"
+            )
+        )
+    if end < len(entries):
+        nav.append(
+            InlineKeyboardButton(
+                "Next", callback_data=f"admin_reviewed_page|{role_key}|{page + 1}"
+            )
+        )
+    if nav:
+        markup.row(*nav)
+
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_reviewed_scored_menu"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+
+    text = f"Reviewed/Scored submissions ({role_label_text}) - page {page + 1}"
+    edit_or_send_message(
+        bot, chat_id, text, reply_markup=markup, edit_message=edit_message
+    )
+
+
+def handle_admin_reviewed_scored_role(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    _, role_key = call.data.split("|", 1)
+    role = None if role_key == "all" else role_key
+    _show_admin_reviewed_scored_page(
+        bot,
+        chat_id=call.message.chat.id,
+        role=role,
+        page=0,
+        edit_message=call.message,
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_reviewed_scored_page(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    parts = call.data.split("|", 2)
+    if len(parts) != 3:
+        bot.answer_callback_query(call.id, "Invalid page request")
+        return
+    role_key = parts[1]
+    page = max(0, int(parts[2]))
+    role = None if role_key == "all" else role_key
+    _show_admin_reviewed_scored_page(
+        bot,
+        chat_id=call.message.chat.id,
+        role=role,
+        page=page,
+        edit_message=call.message,
     )
     bot.answer_callback_query(call.id)
 
