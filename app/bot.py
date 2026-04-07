@@ -75,6 +75,8 @@ from app.handlers import (
     handle_admin_score_visibility_menu,
     handle_admin_score_visibility_toggle,
     handle_admin_stats_overview,
+    handle_admin_start_chat,
+    handle_admin_view_portfolio,
     handle_admin_toggle_profile_edit_control,
     handle_admin_task_attach_choice,
     handle_admin_task_attachment_action,
@@ -107,6 +109,10 @@ from app.handlers import (
     handle_profile_edit_menu,
     handle_profile_edit_name_or_email_input,
     handle_profile_edit_name_or_email_start,
+    handle_profile_portfolio_menu,
+    handle_profile_portfolio_cv_input,
+    handle_profile_portfolio_more_input,
+    handle_profile_portfolio_projects_input,
     handle_profile_edit_city_input,
     handle_profile_finish,
     handle_profile_pick_city,
@@ -123,6 +129,9 @@ from app.handlers import (
     handle_profile_set_gender,
     handle_profile_set_language,
     handle_profile_set_language_level,
+    handle_profile_set_portfolio_cv_start,
+    handle_profile_set_portfolio_more_start,
+    handle_profile_set_portfolio_projects_start,
     handle_profile_set_nationality,
     handle_start,
     handle_submit_custom_choice,
@@ -505,6 +514,30 @@ def profile_edit_current_city_step(message: Message):
     handle_profile_edit_city_input(bot, message)
 
 
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_portfolio_cv"
+)
+def profile_portfolio_cv_step(message: Message):
+    handle_profile_portfolio_cv_input(bot, message)
+
+
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_portfolio_projects"
+)
+def profile_portfolio_projects_step(message: Message):
+    handle_profile_portfolio_projects_input(bot, message)
+
+
+@bot.message_handler(
+    func=lambda m: registration_state.get(m.from_user.id, {}).get("step")
+    == "profile_portfolio_more"
+)
+def profile_portfolio_more_step(message: Message):
+    handle_profile_portfolio_more_input(bot, message)
+
+
 @bot.message_handler(content_types=["document", "photo"])
 def any_file_step(message: Message):
     state = registration_state.get(message.from_user.id, {}).get("step")
@@ -558,6 +591,28 @@ def profile_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data == "profile_edit_menu")
 def profile_edit_menu_callback(call: CallbackQuery):
     handle_profile_edit_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_portfolio_menu")
+def profile_portfolio_menu_callback(call: CallbackQuery):
+    handle_profile_portfolio_menu(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_set_portfolio_cv")
+def profile_set_portfolio_cv_callback(call: CallbackQuery):
+    handle_profile_set_portfolio_cv_start(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data == "profile_set_portfolio_projects"
+)
+def profile_set_portfolio_projects_callback(call: CallbackQuery):
+    handle_profile_set_portfolio_projects_start(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "profile_set_portfolio_more")
+def profile_set_portfolio_more_callback(call: CallbackQuery):
+    handle_profile_set_portfolio_more_start(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "profile_pick_gender")
@@ -1022,6 +1077,18 @@ def admin_users_page_callback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_user_view|"))
 def admin_user_view_callback(call: CallbackQuery):
     handle_admin_user_view(bot, call)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_start_chat|"))
+def admin_start_chat_callback(call: CallbackQuery):
+    handle_admin_start_chat(bot, call)
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("admin_view_portfolio|")
+)
+def admin_view_portfolio_callback(call: CallbackQuery):
+    handle_admin_view_portfolio(bot, call)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_ban_user|"))

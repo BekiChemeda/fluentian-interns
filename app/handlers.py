@@ -246,7 +246,7 @@ def _build_dashboard_text(user: Dict) -> str:
     score_visible = bool(db.get_global_setting("score_visibility", True))
     text = f"✅ Welcome, {short_name(user)}\nRole: {role_label(user.get('role', ''))}"
     if score_visible:
-        text += f"\nScore: {user.get('score', 0)}"
+        text += f"\n Current Score: {user.get('score', 0)}"
     return text
 
 
@@ -634,6 +634,9 @@ def handle_registration_approval(bot, call: CallbackQuery, approve: bool) -> Non
             "country_language": "",
             "country_languages": [],
             "language_level": "",
+            "portfolio_cv_link": "",
+            "portfolio_projects_link": "",
+            "portfolio_more_link": "",
             "state": config.USER_STATE_ACTIVE,
             "score": 0,
             "is_banned": False,
@@ -745,6 +748,9 @@ def handle_last_name(bot, message: Message) -> None:
         "country_language": "",
         "country_languages": [],
         "language_level": "",
+        "portfolio_cv_link": "",
+        "portfolio_projects_link": "",
+        "portfolio_more_link": "",
         "state": config.USER_STATE_ACTIVE,
         "score": 0,
         "is_banned": False,
@@ -807,6 +813,9 @@ def handle_profile(bot, call: CallbackQuery) -> None:
         f"Current City: {user.get('current_city') or 'Not set'}\n"
         f"Languages: {_languages_text(user)}\n"
         f"Language Level: {user.get('language_level') or 'Not set'}\n"
+        f"Portfolio CV: {user.get('portfolio_cv_link') or 'Not set'}\n"
+        f"Portfolio Projects: {user.get('portfolio_projects_link') or 'Not set'}\n"
+        f"Portfolio More: {user.get('portfolio_more_link') or 'Not set'}\n"
         f"Profile Completion: {profile_completion_percent(user)}%"
     )
     if score_visible:
@@ -861,6 +870,9 @@ def handle_profile_edit_menu(bot, call: CallbackQuery) -> None:
             "Language Level", callback_data="profile_pick_language_level"
         )
     )
+    markup.add(
+        InlineKeyboardButton("Portfolio Links", callback_data="profile_portfolio_menu")
+    )
     if name_edit_enabled:
         markup.add(
             InlineKeyboardButton("First Name", callback_data="profile_edit_first_name")
@@ -879,6 +891,104 @@ def handle_profile_edit_menu(bot, call: CallbackQuery) -> None:
         text, call.message.chat.id, call.message.message_id, reply_markup=markup
     )
     bot.answer_callback_query(call.id)
+
+
+def handle_profile_portfolio_menu(bot, call: CallbackQuery) -> None:
+    user = db.get_user(call.from_user.id) or {}
+    text = (
+        "📁 Portfolio Links\n"
+        f"CV: {user.get('portfolio_cv_link') or 'Not set'}\n"
+        f"Projects: {user.get('portfolio_projects_link') or 'Not set'}\n"
+        f"More: {user.get('portfolio_more_link') or 'Not set'}"
+    )
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("Set CV Link", callback_data="profile_set_portfolio_cv")
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Set Projects Link", callback_data="profile_set_portfolio_projects"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "Set More Link", callback_data="profile_set_portfolio_more"
+        )
+    )
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data="profile_edit_menu"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+    )
+    bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=markup
+    )
+    bot.answer_callback_query(call.id)
+
+
+def _start_portfolio_input(bot, call: CallbackQuery, step: str, label: str) -> None:
+    registration_state[call.from_user.id] = {"step": step}
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        f"Send {label} Google Drive link (or type '-' to clear it):",
+        reply_markup=navigation_markup(back="profile_portfolio_menu", cancel=True),
+        edit_message=call.message,
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_profile_set_portfolio_cv_start(bot, call: CallbackQuery) -> None:
+    _start_portfolio_input(bot, call, "profile_portfolio_cv", "CV")
+
+
+def handle_profile_set_portfolio_projects_start(bot, call: CallbackQuery) -> None:
+    _start_portfolio_input(bot, call, "profile_portfolio_projects", "Projects")
+
+
+def handle_profile_set_portfolio_more_start(bot, call: CallbackQuery) -> None:
+    _start_portfolio_input(bot, call, "profile_portfolio_more", "More")
+
+
+def _handle_profile_portfolio_input(
+    bot, message: Message, step: str, field_name: str
+) -> None:
+    state = registration_state.get(message.from_user.id)
+    if not state or state.get("step") != step:
+        return
+    value = (message.text or "").strip()
+    if value == "-":
+        db.update_user(message.from_user.id, {field_name: ""})
+        clear_state(message.from_user.id)
+        bot.send_message(message.chat.id, "✅ Portfolio link cleared.")
+        show_dashboard(bot, message.from_user.id, message.chat.id)
+        return
+    if not utils.is_valid_url(value):
+        bot.send_message(
+            message.chat.id, "Please send a valid URL starting with http:// or https://"
+        )
+        return
+    db.update_user(message.from_user.id, {field_name: value})
+    clear_state(message.from_user.id)
+    bot.send_message(message.chat.id, "✅ Portfolio link saved.")
+    show_dashboard(bot, message.from_user.id, message.chat.id)
+
+
+def handle_profile_portfolio_cv_input(bot, message: Message) -> None:
+    _handle_profile_portfolio_input(
+        bot, message, "profile_portfolio_cv", "portfolio_cv_link"
+    )
+
+
+def handle_profile_portfolio_projects_input(bot, message: Message) -> None:
+    _handle_profile_portfolio_input(
+        bot, message, "profile_portfolio_projects", "portfolio_projects_link"
+    )
+
+
+def handle_profile_portfolio_more_input(bot, message: Message) -> None:
+    _handle_profile_portfolio_input(
+        bot, message, "profile_portfolio_more", "portfolio_more_link"
+    )
 
 
 def handle_profile_pick_gender(bot, call: CallbackQuery) -> None:
@@ -2389,6 +2499,13 @@ def handle_admin_review_item(bot, call: CallbackQuery) -> None:
     if not sub or not task or not user:
         bot.answer_callback_query(call.id, "Not found")
         return
+    custom_fields = sub.get("custom_fields", [])
+    custom_lines = []
+    for item in custom_fields:
+        name = str(item.get("name", "")).strip() or "Field"
+        value = str(item.get("value", "")).strip() or "N/A"
+        custom_lines.append(f"- {name}: {value}")
+    custom_text = "\n".join(custom_lines) if custom_lines else "- None"
     text = (
         f"Intern: {short_name(user)}\n"
         f"Task: {task.get('title', '')}\n"
@@ -2396,7 +2513,7 @@ def handle_admin_review_item(bot, call: CallbackQuery) -> None:
         f"Demo URL: {sub.get('demo_url') or 'N/A'}\n"
         f"Learned: {sub.get('learned', '')}\n"
         f"Importance: {sub.get('importance_rating', 'N/A')}/10\n"
-        f"Custom fields: {len(sub.get('custom_fields', []))}\n"
+        f"Custom fields ({len(custom_fields)}):\n{custom_text}\n"
         f"Files: {len(sub.get('files', []))}\n"
         f"Status: {sub.get('status', '')}"
     )
@@ -2429,7 +2546,7 @@ def handle_admin_review_item(bot, call: CallbackQuery) -> None:
     )
     markup.row(
         InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
-        InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"),
+        InlineKeyboardButton("⬅️ Back", callback_data="admin_review_menu"),
     )
     bot.edit_message_text(
         text, call.message.chat.id, call.message.message_id, reply_markup=markup
@@ -3299,6 +3416,8 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
         return
     text = (
         f"👤 {short_name(user)}\n"
+        f"Telegram ID: {user.get('telegram_id', '')}\n"
+        f"Username: @{user.get('username', '') if user.get('username') else 'N/A'}\n"
         f"Email: {user.get('email', '')}\n"
         f"Role: {role_label(user.get('role', ''))}\n"
         f"Banned: {'Yes' if user.get('is_banned') else 'No'}"
@@ -3316,6 +3435,24 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
         InlineKeyboardButton("🟦 Change Role", callback_data=f"admin_change_role|{uid}")
     )
     markup.add(
+        InlineKeyboardButton("💬 Start Chat", callback_data=f"admin_start_chat|{uid}")
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "📄 View CV", callback_data=f"admin_view_portfolio|{uid}|cv"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "🧩 View Projects", callback_data=f"admin_view_portfolio|{uid}|projects"
+        )
+    )
+    markup.add(
+        InlineKeyboardButton(
+            "➕ View More", callback_data=f"admin_view_portfolio|{uid}|more"
+        )
+    )
+    markup.add(
         InlineKeyboardButton("❌ Remove User", callback_data=f"admin_remove_user|{uid}")
     )
     markup.row(
@@ -3324,6 +3461,76 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
     )
     edit_or_send_message(
         bot, call.message.chat.id, text, reply_markup=markup, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_view_portfolio(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    parts = call.data.split("|", 2)
+    if len(parts) != 3:
+        bot.answer_callback_query(call.id, "Invalid request")
+        return
+    uid = int(parts[1])
+    kind = parts[2]
+    user = db.get_user(uid)
+    if not user:
+        bot.answer_callback_query(call.id, "User not found")
+        return
+
+    field_map = {
+        "cv": ("portfolio_cv_link", "CV"),
+        "projects": ("portfolio_projects_link", "Projects"),
+        "more": ("portfolio_more_link", "More"),
+    }
+    if kind not in field_map:
+        bot.answer_callback_query(call.id, "Invalid portfolio type")
+        return
+    field_name, label = field_map[kind]
+    link = (user.get(field_name) or "").strip()
+    if link:
+        text = f"{label} link for {short_name(user)}:\n{link}"
+    else:
+        text = f"No {label.lower()} link set for {short_name(user)}."
+
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("⬅️ Back", callback_data=f"admin_user_view|{uid}"),
+        InlineKeyboardButton("🏠 Home", callback_data="go_dashboard"),
+    )
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_flow"))
+    edit_or_send_message(
+        bot, call.message.chat.id, text, reply_markup=markup, edit_message=call.message
+    )
+    bot.answer_callback_query(call.id)
+
+
+def handle_admin_start_chat(bot, call: CallbackQuery) -> None:
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "Admin only")
+        return
+    _, raw = call.data.split("|", 1)
+    uid = int(raw)
+    target_user = db.get_user(uid)
+    if not target_user:
+        bot.answer_callback_query(call.id, "User not found")
+        return
+
+    registration_state[call.from_user.id] = {
+        "step": "contact_reply",
+        "target_user_id": uid,
+    }
+    edit_or_send_message(
+        bot,
+        call.message.chat.id,
+        (
+            f"Send message to {short_name(target_user)} (ID: {uid}).\n"
+            "They will get a Reply button."
+        ),
+        reply_markup=navigation_markup(back=f"admin_user_view|{uid}", cancel=True),
+        edit_message=call.message,
     )
     bot.answer_callback_query(call.id)
 
