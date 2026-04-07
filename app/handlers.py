@@ -282,12 +282,12 @@ def _parse_force_channel_input(
 
     channel_ref = parts[0]
     join_hint = " ".join(parts[1:]) if len(parts) > 1 else ""
+    username_line = f"Username: @{username}" if username else "Username: N/A"
 
     # Accept public channel username or private/public chat id.
     if channel_ref.startswith("@"):
         return channel_ref, join_hint, None
-    if channel_ref.startswith("-100") and channel_ref[1:].isdigit():
-        return channel_ref, join_hint, None
+        f"{username_line}\n"
 
     return (
         None,
@@ -3414,10 +3414,15 @@ def handle_admin_user_view(bot, call: CallbackQuery) -> None:
     if not user:
         bot.answer_callback_query(call.id, "User not found")
         return
+    username = (user.get("username") or "").strip()
+    mention_label = f"@{username}" if username else short_name(user)
     text = (
-        f"👤 {short_name(user)}\n"
+        f"👤 {mention_label}\n"
+        f"Name: {short_name(user)}\n"
         f"Telegram ID: {user.get('telegram_id', '')}\n"
-        f"Username: @{user.get('username', '') if user.get('username') else 'N/A'}\n"
+        f"Username: @{username}"
+        if username
+        else "Username: N/A" + "\n"
         f"Email: {user.get('email', '')}\n"
         f"Role: {role_label(user.get('role', ''))}\n"
         f"Banned: {'Yes' if user.get('is_banned') else 'No'}"
